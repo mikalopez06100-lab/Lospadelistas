@@ -1,0 +1,143 @@
+:root {
+  --bg: #0b1622;
+  --fg: #e8f0f8;
+  --accent: #e4f23a;
+  --panel: rgba(12, 22, 34, 0.94);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+  /* Pas de rebond de page, pas de pull-to-refresh, pas de sélection sur appui long. */
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+#hud {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top));
+  left: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+#hud button,
+#panel button {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-height: 36px;
+}
+
+#hud button.active {
+  background: rgba(228, 242, 58, 0.25);
+  border-color: var(--accent);
+}
+
+#hint {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  text-align: center;
+  font-size: 14px;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+#panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(360px, 100%);
+  overflow-y: auto;
+  padding: max(12px, env(safe-area-inset-top)) 16px 24px;
+  background: var(--panel);
+  font-size: 13px;
+  touch-action: pan-y;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+#panel h3 {
+  margin: 16px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.slider-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  margin: 8px 0;
+}
+
+.slider-row input {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.slider-row output {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.panel-actions textarea {
+  width: 100%;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+}
+
+.panel-flash {
+  margin-top: 8px;
+  color: var(--accent);
+}
+
+.hidden {
+  display: none !important;
+}
