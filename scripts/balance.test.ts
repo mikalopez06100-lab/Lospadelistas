@@ -19,14 +19,20 @@ it('équilibrage des matchs', () => {
       let won = 0;
       let points = 0;
       let faults = 0;
+      let glass1 = 0;
+      let glass2 = 0;
+      let style = 0;
       for (let seed = 1; seed <= 6; seed++) {
         const { match, events } = playBotMatch(seed * 31, level, sigma, t, COURT, 30 * 60);
         durations.push((match.tick * FIXED_DT) / 60);
         if (match.score.winner === 0) won++;
+        style += match.style;
         for (const e of events) {
           if (e.type === 'fault') faults++;
           if (e.type !== 'point') continue;
           points++;
+          if (e.winnerGlass >= 1) glass1++;
+          if (e.winnerGlass >= 2) glass2++;
           rallies.push(e.shots);
           const k = `${e.result.winner === 0 ? 'nous' : 'eux'}:${e.result.reason}`;
           reasons[k] = (reasons[k] ?? 0) + 1;
@@ -37,7 +43,7 @@ it('équilibrage des matchs', () => {
       const top = Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k} ${v}`).join(', ');
       console.log(
         `σ${sigma}ms ${level.padEnd(6)} matchs gagnés ${won}/6 · durée médiane ${durations[3].toFixed(1)} min · ` +
-          `${(points / 6).toFixed(0)} pts/match · échange médian ${rallies[rallies.length >> 1]} (max ${rallies[rallies.length - 1]}) · fautes de service ${faults} · ${top}`,
+          `${(points / 6).toFixed(0)} pts/match · échange médian ${rallies[rallies.length >> 1]} (max ${rallies[rallies.length - 1]}) · fautes de service ${faults} · coups gagnants avec 1 vitre+ ${glass1}, 2 vitres+ ${glass2} · style moyen ${(style / 6).toFixed(0)} · ${top}`,
       );
     }
   }

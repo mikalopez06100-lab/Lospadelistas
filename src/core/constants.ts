@@ -246,6 +246,24 @@ export const AI_LEVELS: Record<AiLevel, AiParams> = {
   fort: { reaction: 0.15, moveSpeed: 4.8, aimError: 0.5, lobChance: 0.2, minDepth: 6, maxDepth: 9.3, errorChance: 0.05, openCourtBias: 0.75, homeDepth: 5.5, volleyPenalty: 0.2, serveError: 0.45, attackChance: 0.55 },
 };
 
+/** Barème du score de style (points gagnés par ton équipe uniquement). */
+export const STYLE = {
+  /** Point gagné. */
+  point: 100,
+  /** Par frappe de l'échange, plafonné à rallyMax. */
+  perShot: 5,
+  rallyMax: 100,
+  /** Par frappe « Parfait » de ta part. */
+  perfect: 20,
+  /** Par balle que tu joues en sortie de vitre. */
+  offGlass: 50,
+  /** Par vitre touchée par le coup gagnant après son rebond (le cœur du jeu). */
+  glassWinner: 150,
+  glassWinnerMaxCount: 3,
+  /** À partir de ce nombre de vitres, le coup gagnant déclenche le ralenti « Rebote ». */
+  slowMoGlassCount: 2,
+};
+
 /** Niveau de l'IA partenaire (fixe : un partenaire correct, ni boulet ni sauveur). */
 export const PARTNER_LEVEL: AiLevel = 'moyen';
 

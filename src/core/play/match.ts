@@ -7,11 +7,13 @@ import {
   onBallStatus,
   onContact,
   onHit,
+  sideOf,
   startServe,
   type Box,
   type PointResult,
   type RallyState,
 } from '../rules/rally';
+import { styleForPoint, type StyleGain } from '../rules/style';
 import { awardPoint, createScore, pointsPlayedInGame, type MatchScore, type Team } from '../rules/score';
 import { createRng, gaussian, nextFloat, range, type Rng } from '../rng';
 import { aimAt } from '../shot/aim';
@@ -62,10 +64,20 @@ export interface MatchInput {
 export type MatchEvent =
   | { type: 'contact'; contact: ContactEvent }
   | { type: 'serve'; serverId: number; second: boolean }
-  | { type: 'hit'; playerId: number; team: Team; kind: ShotKind; quality: number; timing: Timing }
+  | { type: 'hit'; playerId: number; team: Team; kind: ShotKind; quality: number; timing: Timing; power: number; offGlass: boolean }
   | { type: 'fault'; serverId: number; double: boolean }
   | { type: 'let' }
-  | { type: 'point'; result: PointResult; shots: number; game: boolean; match: boolean };
+  | {
+      type: 'point';
+      result: PointResult;
+      shots: number;
+      game: boolean;
+      match: boolean;
+      /** Style gagné sur ce point (null si le point est perdu ou donné par une double faute). */
+      style: StyleGain | null;
+      /** Vitres touchées par le coup gagnant après son rebond (0 si le point vient d'une faute). */
+      winnerGlass: number;
+    };
 
 export interface Match {
   tick: number;
@@ -93,6 +105,13 @@ export interface Match {
   shots: number;
   bestRally: number;
   lastContact: ContactEvent | null;
+  /** Score de style cumulé de ton équipe sur le match. */
+  style: number;
+  /** Compteurs de style de l'échange en cours. */
+  rallyPerfects: number;
+  rallyOffGlass: number;
+  /** Vitres touchées dans le camp du receveur, après le rebond, depuis la dernière frappe. */
+  glassSinceHit: number;
 }
 
 const SERVE_DELAY_TICKS = 110;
@@ -141,6 +160,10 @@ export function createMatch(seed: number, aiLevel: AiLevel, court: CourtGeometry
     shots: 0,
     bestRally: 0,
     lastContact: null,
+    style: 0,
+    rallyPerfects: 0,
+    rallyOffGlass: 0,
+    glassSinceHit: 0,
   };
   setupServe(m, court);
   return m;
@@ -240,6 +263,8 @@ export function tickMatch(m: Match, inputs: readonly MatchInput[], t: Tuning, co
     for (const c of contacts) {
       out.push({ type: 'contact', contact: c });
       m.lastContact = c;
+      const hitter = m.rally.lastHitter;
+      if (c.surface === 'glass' && hitter !== null && m.rally.receiverBounces >= 1 && sideOf(court, c.pos.y) !== hitter) m.glassSinceHit++;
       onContact(m.rally, c, court);
     }
     onBallStatus(m.rally, ball);
@@ -289,6 +314,9 @@ function serve(m: Match, t: Tuning, court: CourtGeometry, out: MatchEvent[], int
   m.phaseTicks = 0;
   m.pending = null;
   m.shots = 1;
+  m.rallyPerfects = 0;
+  m.rallyOffGlass = 0;
+  m.glassSinceHit = 0;
   out.push({ type: 'serve', serverId: m.serverId, second: m.serveNumber === 2 });
   assign(m, receiving, t, court, FIXED_DT * t.physics.timeScale);
   assignNobody(m, m.servingTeam);
@@ -325,7 +353,14 @@ function endRally(m: Match, out: MatchEvent[]): void {
   }
   m.pauseTicks = game ? GAME_PAUSE_TICKS : POINT_PAUSE_TICKS;
   if (match) m.phase = 'over';
-  out.push({ type: 'point', result, shots: m.shots, game, match });
+  // Coup gagnant = le point revient à l'équipe qui a frappé en dernier (sinon c'est une faute adverse).
+  const winnerGlass = result.winner === m.rally.lastHitter && result.reason !== 'faute-service' ? m.glassSinceHit : 0;
+  let style: StyleGain | null = null;
+  if (result.winner === 0 && result.reason !== 'faute-service') {
+    style = styleForPoint({ shots: m.shots, perfects: m.rallyPerfects, offGlass: m.rallyOffGlass, winnerGlass });
+    m.style += style.total;
+  }
+  out.push({ type: 'point', result, shots: m.shots, game, match, style, winnerGlass });
 }
 
 function assignNobody(m: Match, team: Team): void {
@@ -412,7 +447,8 @@ function hitHuman(m: Match, p: MatchPlayer, intent: ShotIntent, t: Tuning, court
     if (m.tick < p.target.tick - 4) timing = 'tot';
     else if (m.tick > p.target.tick + 4) timing = 'tard';
   }
-  launch(m, p, vel, out, intent.kind, quality, timing, t, court);
+  if (timing === 'parfait') m.rallyPerfects++;
+  launch(m, p, vel, out, intent.kind, quality, timing, actual.power, t, court);
 }
 
 function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: MatchEvent[]): void {
@@ -460,7 +496,7 @@ function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: M
   }
   const vel = aimAt(ball.pos, target, kind, forward, t.shot, t.physics, court);
   if (nextFloat(m.rng) < ai.errorChance) spoil(vel, ball.pos, m.rng, t, court);
-  launch(m, p, vel, out, kind, 1, 'juste', t, court);
+  launch(m, p, vel, out, kind, 1, 'juste', 0.5, t, court);
 }
 
 /** Faute directe de l'IA : frappe trop forte (vitre sans rebond), dans le filet, ou trop croisée. */
@@ -492,10 +528,14 @@ function launch(
   kind: ShotKind,
   quality: number,
   timing: Timing,
+  power: number,
   t: Tuning,
   court: CourtGeometry,
 ): void {
   const ball = m.ball!;
+  const offGlass = m.glassSinceHit > 0;
+  if (offGlass && p.isHuman) m.rallyOffGlass++;
+  m.glassSinceHit = 0;
   m.ball = createBall(ball.pos, vel);
   onHit(m.rally, p.team);
   m.shots++;
@@ -504,5 +544,5 @@ function launch(
   const receiving = other(p.team);
   for (const o of m.players) if (o.team === receiving && !o.isHuman) o.moveAfter = m.tick + Math.round(o.ai.reaction / FIXED_DT);
   assign(m, receiving, t, court, FIXED_DT * t.physics.timeScale);
-  out.push({ type: 'hit', playerId: p.id, team: p.team, kind, quality, timing });
+  out.push({ type: 'hit', playerId: p.id, team: p.team, kind, quality, timing, power, offGlass });
 }

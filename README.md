@@ -3,10 +3,9 @@
 Jeu mobile de padel arcade, jouable d'une main, en sessions de 2 à 3 minutes.
 Le cœur du jeu : **jouer avec les vitres**.
 
-**État : phase 2, match en double.** Tu joues avec un partenaire IA contre deux IA, avec
-service en diagonale, point en or et fin de match. Le placement est automatique et tu frappes
-au swipe. Le bac à sable de la phase 0 (physique seule) reste accessible avec le bouton
-« Match / Bac à sable ».
+**État : phase 3, prototype complet.** Match en double (toi + un partenaire IA contre deux IA)
+avec service, point en or, sons, vibrations, ralenti « Rebote », score de style, écran d'accueil
+et installation sur l'écran d'accueil du téléphone (PWA, jouable hors ligne).
 
 Jouable en ligne : https://lospadelistas.vercel.app
 
@@ -34,8 +33,8 @@ npm run build      # build de production dans dist/
 4. Si la page ne charge pas : le pare-feu de l'ordinateur bloque le port 5173. Sur macOS, autorise
    Node dans Réglages → Réseau → Pare-feu. Sur Windows, autorise Node quand la fenêtre le demande.
 
-Limite à connaître : l'installation en PWA (phase 3) exige du HTTPS. Le réseau local suffit
-pour jouer, pas pour tester l'installation : il faudra un déploiement de prévisualisation.
+Limite à connaître : l'installation en PWA exige du HTTPS. Le réseau local suffit pour jouer,
+pas pour tester l'installation : pour ça, utilise l'adresse Vercel.
 
 ## Comment jouer
 
@@ -77,6 +76,34 @@ pour jouer, pas pour tester l'installation : il faudra un déploiement de prévi
   les impacts prévus (○ sol, ✕ vitre), le point de frappe visé par le placement (cercle vert)
   et les vitesses.
 
+## Sons, vibrations, style (phase 3)
+
+- **Sons** : synthétisés en WebAudio, sans aucun fichier. Frappe, rebond au sol, vitre (le plus
+  travaillé), grillage, filet, point gagné ou perdu, fin de match. Le son se coupe avec 🔊 ; le
+  jeu reste entièrement jouable sans (tout a un retour visuel).
+- **Vibrations** : sur tes frappes fortes et sur les points gagnés. **Android uniquement** :
+  Safari sur iPhone n'implémente pas l'API Vibration, il faudra l'appli native (Capacitor) pour ça.
+- **Ralenti « Rebote »** : quand un coup gagnant touche au moins 2 vitres après son rebond, le
+  temps ralentit environ une seconde. C'est rare (quelques pourcents des points). Pour voir
+  l'effet tout de suite : `rebote.slowMo()` dans la console du navigateur.
+- **Score de style** : attribué sur les points gagnés par ton équipe. Barème dans `STYLE`
+  (`src/core/constants.ts`) : 100 par point, 5 par frappe de l'échange (max 100), 20 par frappe
+  « Parfait », 50 par balle jouée en sortie de vitre, 150 par vitre touchée par le coup gagnant.
+  Le meilleur score par niveau d'IA est gardé sur le téléphone.
+
+## Installer sur le téléphone (PWA)
+
+Ouvre https://lospadelistas.vercel.app sur le téléphone :
+
+- **Android (Chrome)** : bouton « Installer l'appli » sur l'écran d'accueil du jeu, ou menu ⋮ →
+  « Ajouter à l'écran d'accueil ».
+- **iPhone (Safari)** : bouton Partager → « Sur l'écran d'accueil ».
+
+Une fois installé, le jeu s'ouvre en plein écran et fonctionne hors ligne. Les mises à jour
+arrivent au lancement suivant quand le téléphone est en ligne. Le service worker
+(`public/sw.js`) n'est actif que sur le build de production, pas avec `npm run dev`.
+Les icônes sont générées par `python3 scripts/make-icons.py`.
+
 ## Ajuster les constantes physiques
 
 Deux façons de faire :
@@ -116,6 +143,7 @@ src/
     shot/aim.ts           coup visé vers un point (utilisé par l'IA, mêmes limites que le joueur)
     rules/rally.ts        règles de l'échange et du service : fautes, let, double rebond
     rules/score.ts        15-30-40, point en or, jeux, fin de match
+    rules/style.ts        score de style d'un point
     play/positioning.ts   placement automatique : instants où la balle sera jouable
     play/match.ts         match en double : service, répartition des balles, frappes, IA
     play/replay.ts        enregistrement et rejeu d'un match (base des fantômes)
@@ -123,7 +151,9 @@ src/
     sandbox.ts            état du bac à sable (phase 0)
   render/      Canvas 2D : lit l'état sans jamais le modifier
   input/       Pointer Events → swipes horodatés
+  audio/       sons synthétisés (WebAudio) et vibrations
   app/         panneau de réglages
+public/        manifest, service worker et icônes de la PWA
 tests/         vitest
 scripts/       joueur-robot et simulation d'équilibrage (npm run sim)
 ```

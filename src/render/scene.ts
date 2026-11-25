@@ -40,6 +40,10 @@ export interface SceneInput {
   fps: number;
   /** Lignes supplémentaires du panneau debug. */
   debugLines: string[];
+  /** Dernières positions de la balle, de la plus ancienne à la plus récente (traînée). */
+  trail: readonly Vec3[];
+  /** Ralenti « Rebote » : traînée et balle en surbrillance. */
+  glow: boolean;
 }
 
 const tmp: ScreenPoint = { x: 0, y: 0 };
@@ -74,6 +78,7 @@ export function drawScene(
 
   if (prediction) drawPrediction(ctx, proj, prediction, 'rgba(255, 235, 80, 0.85)');
   if (previewPrediction) drawPrediction(ctx, proj, previewPrediction, 'rgba(255, 140, 60, 0.9)');
+  if (ball) drawTrail(ctx, proj, s.trail, view, s.glow);
   for (const pl of s.players) {
     if (pl.hittable) drawHitRing(ctx, proj, pl, s.tick);
     if (s.debug && pl.target) drawTargetMark(ctx, proj, pl.target);
@@ -84,7 +89,7 @@ export function drawScene(
     y: pl.y,
     draw: () => drawPlayer(ctx, proj, pl.x, pl.y, pl.color),
   }));
-  if (ball) items.push({ y: drawPos.y, draw: () => drawBall(ctx, proj, view, drawPos) });
+  if (ball) items.push({ y: drawPos.y, draw: () => drawBall(ctx, proj, view, drawPos, s.glow) });
   items.sort((a, b) => b.y - a.y);
   for (const it of items) if (it.y > court.netY) it.draw();
   drawNet(ctx, proj, court);
@@ -95,7 +100,22 @@ export function drawScene(
   if (s.debug) drawDebugText(ctx, s, prediction, heightCss);
 }
 
-function drawBall(ctx: CanvasRenderingContext2D, proj: Projection, view: ViewParams, pos: Vec3): void {
+/** Traînée : la vitesse de la balle se lit d'un coup d'œil, même quand elle est petite au fond. */
+function drawTrail(ctx: CanvasRenderingContext2D, proj: Projection, trail: readonly Vec3[], view: ViewParams, glow: boolean): void {
+  const n = trail.length;
+  for (let i = 0; i < n; i++) {
+    const p = trail[i];
+    const f = (i + 1) / (n + 1);
+    proj.toScreen(p.x, p.y, p.z, tmp);
+    const r = Math.max(1.5, view.ballVisualRadius * proj.pxPerMeter(p.y) * (1 + Math.max(0, p.z) * view.heightSizeGain)) * (0.35 + 0.6 * f);
+    ctx.beginPath();
+    ctx.arc(tmp.x, tmp.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = glow ? `rgba(255, 255, 255, ${0.55 * f})` : `rgba(228, 242, 58, ${0.3 * f})`;
+    ctx.fill();
+  }
+}
+
+function drawBall(ctx: CanvasRenderingContext2D, proj: Projection, view: ViewParams, pos: Vec3, glow = false): void {
   // Ombre : au sol, légèrement décalée par une lumière oblique, plus pâle quand la balle monte.
   const shadowAlpha = 0.5 * clamp(1 - pos.z / 8, 0.35, 1);
   ctx.fillStyle = `rgba(0, 0, 0, ${shadowAlpha})`;
@@ -104,6 +124,12 @@ function drawBall(ctx: CanvasRenderingContext2D, proj: Projection, view: ViewPar
 
   proj.toScreen(pos.x, pos.y, pos.z, tmp);
   const r = Math.max(2.5, view.ballVisualRadius * proj.pxPerMeter(pos.y) * (1 + Math.max(0, pos.z) * view.heightSizeGain));
+  if (glow) {
+    ctx.beginPath();
+    ctx.arc(tmp.x, tmp.y, r * 2.4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(228, 242, 58, 0.3)';
+    ctx.fill();
+  }
   ctx.beginPath();
   ctx.arc(tmp.x, tmp.y, r, 0, Math.PI * 2);
   ctx.fillStyle = '#e4f23a';
