@@ -40,9 +40,67 @@ body {
   left: 8px;
   right: 8px;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
   pointer-events: none;
+}
+
+#score {
+  position: fixed;
+  left: 12px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  font-size: 18px;
+  font-weight: 700;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+#score small {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+#score .me {
+  color: #ff8a6e;
+}
+
+#score .ai {
+  color: #7fdcff;
+}
+
+#feedback {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 42%;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 800;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.15s, transform 0.15s;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+
+#feedback.show {
+  opacity: 1;
+  transform: scale(1);
+}
+
+#feedback.good {
+  color: #9dff9d;
+}
+
+#feedback.bad {
+  color: #ff9d8a;
+}
+
+#feedback.info {
+  color: var(--fg);
 }
 
 #hud button,
@@ -67,7 +125,8 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: max(24px, env(safe-area-inset-bottom));
+  bottom: max(72px, calc(env(safe-area-inset-bottom) + 56px));
+  padding: 0 16px;
   text-align: center;
   font-size: 14px;
   opacity: 0.75;

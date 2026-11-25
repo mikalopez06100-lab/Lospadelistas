@@ -8,17 +8,21 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%23e4f23a'/%3E%3C/svg%3E" />
-    <title>Rebote — bac à sable</title>
+    <title>Rebote</title>
   </head>
   <body>
     <canvas id="game"></canvas>
     <div id="hud">
-      <button id="btn-debug" type="button">Debug</button>
+      <button id="btn-mode" type="button">Échange</button>
+      <button id="btn-level" type="button">IA</button>
+      <button id="btn-replay" type="button" title="Relancer le dernier coup">↺</button>
       <button id="btn-lob" type="button">Lob</button>
-      <button id="btn-replay" type="button" title="Relancer le dernier coup">↺ Rejouer</button>
+      <button id="btn-debug" type="button">Dbg</button>
       <button id="btn-settings" type="button" title="Réglages">⚙</button>
     </div>
-    <div id="hint">Swipe vers le haut depuis le bas de l'écran</div>
+    <div id="score"></div>
+    <div id="feedback"></div>
+    <div id="hint"></div>
     <div id="panel" class="hidden"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

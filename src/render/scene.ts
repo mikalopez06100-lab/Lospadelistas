@@ -2,8 +2,7 @@ import { FIXED_DT, type CourtGeometry, type Tuning, type ViewParams } from '../c
 import { clamp, horizontalSpeed, lengthV3, lerp, type Vec3 } from '../core/math/vec3';
 import { netHeightAt } from '../core/physics/court';
 import { predict, type Prediction } from '../core/physics/predict';
-import { createBall } from '../core/physics/step';
-import type { Sandbox } from '../core/sandbox';
+import { createBall, type BallState, type ContactEvent } from '../core/physics/step';
 import type { ShotIntent } from '../core/shot/swipeToShot';
 import { drawNearGlass } from './courtLayer';
 import { groundCircle, line3 } from './draw';
@@ -16,16 +15,31 @@ export interface ShotPreview {
   vel: Vec3;
 }
 
+export interface ScenePlayer {
+  x: number;
+  y: number;
+  color: string;
+  /** Anneau au sol : la balle est frappable maintenant. */
+  hittable: boolean;
+  /** Point de frappe prévu (affiché en debug). */
+  target: Vec3 | null;
+}
+
 export interface SceneInput {
-  sandbox: Sandbox;
+  ball: BallState | null;
+  prevPos: Vec3;
+  lastContact: ContactEvent | null;
+  tick: number;
   /** Fraction du pas fixe écoulée depuis le dernier tick (interpolation d'affichage). */
   alpha: number;
   tuning: Tuning;
   court: CourtGeometry;
-  playerX: number;
+  players: ScenePlayer[];
   debug: boolean;
   preview: ShotPreview | null;
   fps: number;
+  /** Lignes supplémentaires du panneau debug. */
+  debugLines: string[];
 }
 
 const tmp: ScreenPoint = { x: 0, y: 0 };
@@ -41,15 +55,14 @@ export function drawScene(
   widthCss: number,
   heightCss: number,
 ): void {
-  const { court, tuning, sandbox } = s;
+  const { court, tuning, ball } = s;
   const view = tuning.view;
   ctx.drawImage(courtLayer, 0, 0, widthCss, heightCss);
 
-  const ball = sandbox.ball;
   if (ball) {
-    drawPos.x = lerp(sandbox.prevPos.x, ball.pos.x, s.alpha);
-    drawPos.y = lerp(sandbox.prevPos.y, ball.pos.y, s.alpha);
-    drawPos.z = lerp(sandbox.prevPos.z, ball.pos.z, s.alpha);
+    drawPos.x = lerp(s.prevPos.x, ball.pos.x, s.alpha);
+    drawPos.y = lerp(s.prevPos.y, ball.pos.y, s.alpha);
+    drawPos.z = lerp(s.prevPos.z, ball.pos.z, s.alpha);
   }
   const dtPhys = FIXED_DT * tuning.physics.timeScale;
   const prediction =
@@ -59,14 +72,23 @@ export function drawScene(
   const previewPrediction =
     s.debug && s.preview ? predict(createBall(s.preview.origin, s.preview.vel), tuning.physics, court, dtPhys, 4, 3) : null;
 
-  // Ordre de dessin : ce qui est derrière le filet, le filet, puis ce qui est devant.
-  const ballFar = !!ball && drawPos.y > court.netY;
   if (prediction) drawPrediction(ctx, proj, prediction, 'rgba(255, 235, 80, 0.85)');
   if (previewPrediction) drawPrediction(ctx, proj, previewPrediction, 'rgba(255, 140, 60, 0.9)');
-  if (ball && ballFar) drawBall(ctx, proj, view, drawPos);
+  for (const pl of s.players) {
+    if (pl.hittable) drawHitRing(ctx, proj, pl, s.tick);
+    if (s.debug && pl.target) drawTargetMark(ctx, proj, pl.target);
+  }
+
+  // Ordre de dessin : du fond vers l'avant, le filet entre les deux camps.
+  const items: { y: number; draw: () => void }[] = s.players.map((pl) => ({
+    y: pl.y,
+    draw: () => drawPlayer(ctx, proj, pl.x, pl.y, pl.color),
+  }));
+  if (ball) items.push({ y: drawPos.y, draw: () => drawBall(ctx, proj, view, drawPos) });
+  items.sort((a, b) => b.y - a.y);
+  for (const it of items) if (it.y > court.netY) it.draw();
   drawNet(ctx, proj, court);
-  drawPlayer(ctx, proj, s.playerX, tuning.shot.playerDepth - 0.35);
-  if (ball && !ballFar) drawBall(ctx, proj, view, drawPos);
+  for (const it of items) if (it.y <= court.netY) it.draw();
   drawNearGlass(ctx, proj, court);
   fx.draw(ctx, proj, court);
 
@@ -129,8 +151,25 @@ function drawNet(ctx: CanvasRenderingContext2D, proj: Projection, court: CourtGe
   ctx.stroke();
 }
 
-/** Joueur provisoire (phase 0) : silhouette simple, juste pour situer le point de frappe. */
-function drawPlayer(ctx: CanvasRenderingContext2D, proj: Projection, x: number, y: number): void {
+function drawHitRing(ctx: CanvasRenderingContext2D, proj: Projection, pl: ScenePlayer, tick: number): void {
+  const pulse = 0.75 + 0.25 * Math.sin(tick * 0.4);
+  ctx.strokeStyle = `rgba(120, 255, 150, ${0.9 * pulse})`;
+  ctx.lineWidth = 3;
+  groundCircle(ctx, proj, pl.x, pl.y, 0.9);
+  ctx.stroke();
+}
+
+function drawTargetMark(ctx: CanvasRenderingContext2D, proj: Projection, p: Vec3): void {
+  proj.toScreen(p.x, p.y, p.z, tmp);
+  ctx.strokeStyle = 'rgba(120, 255, 150, 0.9)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(tmp.x, tmp.y, 7, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+/** Joueur provisoire : silhouette simple, juste pour situer le point de frappe. */
+function drawPlayer(ctx: CanvasRenderingContext2D, proj: Projection, x: number, y: number, color: string): void {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
   groundCircle(ctx, proj, x, y, 0.35);
   ctx.fill();
@@ -138,7 +177,7 @@ function drawPlayer(ctx: CanvasRenderingContext2D, proj: Projection, x: number, 
   proj.toScreen(x, y, 0.15, tmp);
   proj.toScreen(x, y, 1.45, tmp2);
   ctx.lineCap = 'round';
-  ctx.strokeStyle = '#ff6b4a';
+  ctx.strokeStyle = color;
   ctx.lineWidth = 0.42 * k;
   ctx.beginPath();
   ctx.moveTo(tmp.x, tmp.y);
@@ -204,15 +243,15 @@ const STATUS_FR = { flying: 'en vol', rolling: 'roule', stopped: 'arrêtée', ou
 
 /** En bas de l'écran : le haut doit rester dégagé, c'est là que la balle tape la vitre adverse. */
 function drawDebugText(ctx: CanvasRenderingContext2D, s: SceneInput, pred: Prediction | null, heightCss: number): void {
-  const lines: string[] = [`${s.fps.toFixed(0)} fps · tick ${s.sandbox.tick}`];
-  const b = s.sandbox.ball;
+  const lines: string[] = [`${s.fps.toFixed(0)} fps · tick ${s.tick}`, ...s.debugLines];
+  const b = s.ball;
   if (b) {
     lines.push(
       `v ${(lengthV3(b.vel) * 3.6).toFixed(0)} km/h · vh ${horizontalSpeed(b.vel).toFixed(1)} · vz ${b.vel.z.toFixed(1)} m/s`,
       `z ${b.pos.z.toFixed(2)} m · y ${b.pos.y.toFixed(1)} · ${STATUS_FR[b.status]}`,
     );
   }
-  const c = s.sandbox.lastContact;
+  const c = s.lastContact;
   if (c) lines.push(`dernier impact : ${SURFACE_FR[c.surface]} à ${(c.normalSpeed * 3.6).toFixed(0)} km/h`);
   if (pred) lines.push(`prévu : ${pred.contacts.slice(0, 4).map((e) => SURFACE_FR[e.surface]).join(' → ') || '—'}`);
   const p = s.preview;

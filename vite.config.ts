@@ -7,6 +7,6 @@ export default defineConfig({
   preview: { host: true, port: 4173 },
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'scripts/**/*.test.ts'],
   },
 });

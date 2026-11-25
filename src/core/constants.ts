@@ -136,7 +136,7 @@ export const DEFAULT_SHOT: ShotParams = {
   maxSwipeSpeed: 3.5,
   releaseWindowMs: 100,
   driveMinSpeed: 14,
-  driveMaxSpeed: 28,
+  driveMaxSpeed: 25,
   driveMinElevationDeg: 2,
   driveMaxElevationDeg: 30,
   netClearance: 0.35,
@@ -174,12 +174,70 @@ export const DEFAULT_VIEW: ViewParams = {
   shadowOffsetY: 0.1,
 };
 
+export interface PlayParams {
+  /** Portée de frappe autour du joueur, au sol (m). */
+  reach: number;
+  /** Hauteurs de frappe possibles (m). */
+  minContactZ: number;
+  maxContactZ: number;
+  /** Hauteur de frappe idéale (m) : le placement automatique la recherche. */
+  idealContactZ: number;
+  /** Vitesse de déplacement automatique du joueur (m/s, temps physique). */
+  moveSpeed: number;
+  /** Un swipe fait un peu avant que la balle soit à portée est gardé en mémoire (ms). */
+  swipeBufferMs: number;
+  /** Erreur de direction maximale pour une frappe au pire timing (°). */
+  maxTimingAimErrorDeg: number;
+  /** Erreur de puissance maximale pour une frappe au pire timing (fraction). */
+  maxTimingPowerError: number;
+  /** Pénalité de choix pour une volée (le placement préfère jouer après le rebond). */
+  volleyPenalty: number;
+}
+
+export const DEFAULT_PLAY: PlayParams = {
+  reach: 1.3,
+  minContactZ: 0.2,
+  maxContactZ: 2.2,
+  idealContactZ: 1.0,
+  moveSpeed: 4.5,
+  swipeBufferMs: 220,
+  maxTimingAimErrorDeg: 14,
+  maxTimingPowerError: 0.25,
+  volleyPenalty: 0.8,
+};
+
+export type AiLevel = 'facile' | 'moyen' | 'fort';
+
+export interface AiParams {
+  /** Temps avant que l'IA réagisse à un coup (s, temps physique). */
+  reaction: number;
+  moveSpeed: number;
+  /** Écart type de l'erreur sur le point visé (m). */
+  aimError: number;
+  /** Probabilité de jouer un lob. */
+  lobChance: number;
+  /** Puissance visée : profondeur du point de chute dans le camp adverse (m depuis le filet). */
+  minDepth: number;
+  maxDepth: number;
+  /** Probabilité de faute directe (coup trop long ou trop large) à chaque frappe. */
+  errorChance: number;
+  /** Probabilité de viser le côté opposé au joueur (le « terrain ouvert »). */
+  openCourtBias: number;
+}
+
+export const AI_LEVELS: Record<AiLevel, AiParams> = {
+  facile: { reaction: 0.35, moveSpeed: 4.5, aimError: 1.4, lobChance: 0.1, minDepth: 4, maxDepth: 7.5, errorChance: 0.1, openCourtBias: 0.25 },
+  moyen: { reaction: 0.25, moveSpeed: 5.5, aimError: 0.9, lobChance: 0.15, minDepth: 5, maxDepth: 8.5, errorChance: 0.06, openCourtBias: 0.5 },
+  fort: { reaction: 0.15, moveSpeed: 6.5, aimError: 0.5, lobChance: 0.2, minDepth: 6, maxDepth: 9.3, errorChance: 0.03, openCourtBias: 0.75 },
+};
+
 export interface Tuning {
   physics: PhysicsParams;
   shot: ShotParams;
   view: ViewParams;
+  play: PlayParams;
 }
 
 export function createDefaultTuning(): Tuning {
-  return structuredClone({ physics: DEFAULT_PHYSICS, shot: DEFAULT_SHOT, view: DEFAULT_VIEW });
+  return structuredClone({ physics: DEFAULT_PHYSICS, shot: DEFAULT_SHOT, view: DEFAULT_VIEW, play: DEFAULT_PLAY });
 }

@@ -44,6 +44,18 @@ const SECTIONS: { title: string; sliders: Slider[] }[] = [
     ],
   },
   {
+    title: 'Jeu',
+    sliders: [
+      { path: 'play.reach', label: 'Portée de frappe (m)', min: 0.6, max: 2.5, step: 0.05 },
+      { path: 'play.moveSpeed', label: 'Vitesse de déplacement (m/s)', min: 2, max: 9, step: 0.1 },
+      { path: 'play.swipeBufferMs', label: 'Tolérance swipe en avance (ms)', min: 0, max: 500, step: 10 },
+      { path: 'play.maxTimingAimErrorDeg', label: 'Erreur de direction max (°)', min: 0, max: 30, step: 1 },
+      { path: 'play.maxTimingPowerError', label: 'Erreur de puissance max', min: 0, max: 0.6, step: 0.01 },
+      { path: 'play.idealContactZ', label: 'Hauteur de frappe idéale (m)', min: 0.4, max: 1.8, step: 0.05 },
+      { path: 'play.volleyPenalty', label: 'Réticence à la volée', min: 0, max: 2, step: 0.05 },
+    ],
+  },
+  {
     title: 'Vue',
     sliders: [
       { path: 'view.camDistance', label: 'Recul caméra (m)', min: 15, max: 100, step: 1 },
@@ -135,6 +147,7 @@ export function mountTuningPanel(root: HTMLElement, tuning: Tuning, onChange: (p
         Object.assign(tuning.physics, d.physics);
         Object.assign(tuning.shot, d.shot);
         Object.assign(tuning.view, d.view);
+        Object.assign(tuning.play, d.play);
         saveTuning(tuning);
         onChange('*');
         build();

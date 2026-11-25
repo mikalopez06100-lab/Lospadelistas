@@ -84,14 +84,23 @@ function pathCurvature(pts: SwipeSample[], dx: number, dy: number, len: number):
   return max / len;
 }
 
-/** Vitesse initiale de la balle pour une intention de coup frappée depuis `origin`. */
+/**
+ * Vitesse initiale de la balle pour une intention de coup frappée depuis `origin`.
+ * `forward` = +1 pour frapper vers le fond adverse (y croissant, joueur du bas),
+ * −1 pour le camp d'en face : on calcule dans le terrain retourné, qui est symétrique.
+ */
 export function shotVelocity(
   intent: ShotIntent,
   origin: Vec3,
   s: ShotParams,
   p: PhysicsParams,
   court: CourtGeometry,
+  forward: 1 | -1 = 1,
 ): Vec3 {
+  if (forward === -1) {
+    const v = shotVelocity(intent, { x: origin.x, y: court.length - origin.y, z: origin.z }, s, p, court, 1);
+    return { x: v.x, y: -v.y, z: v.z };
+  }
   let speed: number;
   let elev: number;
   if (intent.kind === 'lob') {
