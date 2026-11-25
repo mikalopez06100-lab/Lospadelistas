@@ -45,6 +45,13 @@
         <p class="tagline">Joue avec les vitres.</p>
 
         <div class="group">
+          <span class="label">Mode</span>
+          <div class="segmented" id="seg-control">
+            <button type="button" data-value="duo">Duo · 2 pouces</button>
+            <button type="button" data-value="solo">Classique · 1 pouce</button>
+          </div>
+        </div>
+        <div class="group">
           <span class="label">Adversaires</span>
           <div class="segmented" id="seg-level">
             <button type="button" data-value="facile">Facile</button>
@@ -76,7 +83,7 @@
         </div>
         <button id="btn-install" type="button" class="hidden">Installer l’appli</button>
         <p id="install-hint" class="hidden">Sur iPhone : bouton Partager, puis « Sur l’écran d’accueil ».</p>
-        <p class="howto">Ton joueur se place tout seul. Quand l’anneau vert s’allume sous lui, swipe vers le haut : la direction vise, la vitesse dose.</p>
+        <p class="howto" id="howto"></p>
       </div>
     </div>
 

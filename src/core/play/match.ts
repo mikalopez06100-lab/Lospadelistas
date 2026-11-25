@@ -33,6 +33,12 @@ import { chooseWindow, findWindows, type ContactWindow, type WindowChoice } from
 
 export const HUMAN_ID = 0;
 
+/**
+ * 'solo' : tu joues le joueur 0 au swipe, placement automatique, partenaire IA.
+ * 'duo'  : tu diriges les joueurs 0 et 1, un pouce chacun (déplacement au stick, frappe au geste).
+ */
+export type ControlMode = 'solo' | 'duo';
+
 export interface Zone {
   xMin: number;
   xMax: number;
@@ -50,16 +56,24 @@ export interface MatchPlayer {
   target: { tick: number; pos: Vec3; kind: ContactWindow['kind'] } | null;
   /** L'IA ne bouge qu'après son temps de réaction (tick absolu). */
   moveAfter: number;
+  /** Mode Duo : le joueur ne se déplace que sur ordre (stick), jamais tout seul en profondeur. */
+  manual: boolean;
+  /** Commande de déplacement en cours : x vers la droite, y vers le filet adverse, norme ≤ 1. */
+  stick: Vec2 | null;
+  /** Aide latérale : abscisse où la balle passera à la profondeur actuelle du joueur. */
+  assistX: number | null;
+  /** Geste de frappe gardé en mémoire en attendant que la balle soit à portée. */
+  pending: { intent: ShotIntent; expires: number } | null;
 }
 
 export type MatchPhase = 'serve' | 'rally' | 'pause' | 'over';
 export type ServeSide = 'right' | 'left';
 export type Timing = 'parfait' | 'tot' | 'tard' | 'juste';
 
-export interface MatchInput {
-  tick: number;
-  intent: ShotIntent;
-}
+/** Entrée d'un joueur humain : une frappe, ou une commande de déplacement (null = stick relâché). */
+export type MatchInput =
+  | { tick: number; playerId: number; intent: ShotIntent }
+  | { tick: number; playerId: number; stick: Vec2 | null };
 
 export type MatchEvent =
   | { type: 'contact'; contact: ContactEvent }
@@ -84,6 +98,7 @@ export interface Match {
   seed: number;
   rng: Rng;
   aiLevel: AiLevel;
+  mode: ControlMode;
   ball: BallState | null;
   prevPos: Vec3;
   rally: RallyState;
@@ -101,7 +116,8 @@ export interface Match {
   serveSide: ServeSide;
   /** Joueur de chaque équipe chargé de la prochaine balle (null = personne, l'équipe vient de frapper). */
   assigned: [number | null, number | null];
-  pending: { intent: ShotIntent; expires: number } | null;
+  /** Tirage fait à chaque frappe : l'IA qui reçoit tentera-t-elle le smash si la balle s'y prête ? */
+  aiSmashRoll: number;
   shots: number;
   bestRally: number;
   lastContact: ContactEvent | null;
@@ -121,7 +137,10 @@ const FAULT_PAUSE_TICKS = 90;
 const CENTER_BAND = 0.8;
 const SERVE_CONTACT_Z = 0.8;
 
-export function createMatch(seed: number, aiLevel: AiLevel, court: CourtGeometry, gamesToWin: number): Match {
+/** Profondeur (depuis sa vitre de fond) d'une équipe IA montée au filet. */
+const NET_HOME_DEPTH = 7;
+
+export function createMatch(seed: number, aiLevel: AiLevel, court: CourtGeometry, gamesToWin: number, mode: ControlMode = 'solo'): Match {
   const W = court.width;
   const right: Zone = { xMin: W / 2, xMax: W };
   const left: Zone = { xMin: 0, xMax: W / 2 };
@@ -129,19 +148,20 @@ export function createMatch(seed: number, aiLevel: AiLevel, court: CourtGeometry
   const partner = AI_LEVELS[PARTNER_LEVEL];
   const mk = (id: number, team: Team, isHuman: boolean, ai: AiParams, zone: Zone): MatchPlayer => {
     const home = homeOf(team, zone, isHuman ? 3 : ai.homeDepth, court);
-    return { id, team, isHuman, ai, zone, pos: { ...home }, home, target: null, moveAfter: 0 };
+    return { id, team, isHuman, ai, zone, pos: { ...home }, home, target: null, moveAfter: 0, manual: isHuman && mode === 'duo', stick: null, assistX: null, pending: null };
   };
   const m: Match = {
     tick: 0,
     seed,
     rng: createRng(seed),
     aiLevel,
+    mode,
     ball: null,
     prevPos: v3(),
     rally: createRally(),
     players: [
       mk(0, 0, true, partner, right),
-      mk(1, 0, false, partner, left),
+      mk(1, 0, mode === 'duo', partner, left),
       mk(2, 1, false, opp, left),
       mk(3, 1, false, opp, right),
     ],
@@ -156,7 +176,7 @@ export function createMatch(seed: number, aiLevel: AiLevel, court: CourtGeometry
     serveNumber: 1,
     serveSide: 'right',
     assigned: [null, null],
-    pending: null,
+    aiSmashRoll: 1,
     shots: 0,
     bestRally: 0,
     lastContact: null,
@@ -200,7 +220,6 @@ export function receiverFor(m: Match, court: CourtGeometry): number {
 /** Tout le monde en place pour servir : serveur derrière la ligne de service, son partenaire au filet. */
 function setupServe(m: Match, court: CourtGeometry): void {
   m.ball = null;
-  m.pending = null;
   m.phase = 'serve';
   m.phaseTicks = 0;
   m.serveSide = pointsPlayedInGame(m.score) % 2 === 0 ? 'right' : 'left';
@@ -211,7 +230,10 @@ function setupServe(m: Match, court: CourtGeometry): void {
   const receiverId = receiverFor(m, court);
   for (const p of m.players) {
     p.target = null;
+    p.assistX = null;
+    p.pending = null;
     p.moveAfter = 0;
+    if (!p.isHuman) p.home.y = p.team === 0 ? p.ai.homeDepth : court.length - p.ai.homeDepth;
     const back = p.team === 0 ? 1 : court.length - 1;
     if (p.id === m.serverId) {
       const sx = (serverBoxSide.xMin + serverBoxSide.xMax) / 2;
@@ -231,23 +253,32 @@ export function isHittable(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeom
   const b = m.ball;
   if (!b || m.phase !== 'rally' || b.status === 'stopped' || b.status === 'out') return false;
   if (!canHit(m.rally, p.team, b.pos.y, court, p.id)) return false;
-  if (b.pos.z < t.play.minContactZ || b.pos.z > t.play.maxContactZ) return false;
+  if (b.pos.z < t.play.minContactZ || b.pos.z > maxContactZ(m, t)) return false;
   return Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y) <= t.play.reach;
+}
+
+/** En Duo, les balles hautes se jouent au-dessus de la tête (smash) ; en solo, non. */
+function maxContactZ(m: Match, t: Tuning): number {
+  return m.mode === 'duo' ? t.play.overheadZ : t.play.maxContactZ;
 }
 
 export function tickMatch(m: Match, inputs: readonly MatchInput[], t: Tuning, court: CourtGeometry, out: MatchEvent[]): void {
   const dt = FIXED_DT * t.physics.timeScale;
   for (const input of inputs) {
     if (input.tick !== m.tick) continue;
-    m.pending = { intent: input.intent, expires: m.tick + Math.round(t.play.swipeBufferMs / 1000 / FIXED_DT) };
+    const p = m.players[input.playerId];
+    if (!p?.isHuman) continue;
+    if ('intent' in input) p.pending = { intent: input.intent, expires: m.tick + Math.round(t.play.swipeBufferMs / 1000 / FIXED_DT) };
+    else if (p.manual) p.stick = input.stick ? { x: clamp(input.stick.x, -1, 1), y: clamp(input.stick.y, -1, 1) } : null;
   }
-  if (m.pending && m.tick > m.pending.expires) m.pending = null;
+  for (const p of m.players) if (p.pending && m.tick > p.pending.expires) p.pending = null;
   m.phaseTicks++;
 
   if (m.phase === 'serve') {
     const server = m.players[m.serverId];
     if (server.isHuman) {
-      if (m.pending) serve(m, t, court, out, m.pending.intent);
+      // On sert d'un geste vers le haut ; un geste vers le bas (smash) n'a pas de sens ici.
+      if (server.pending && server.pending.intent.kind !== 'smash') serve(m, t, court, out, server.pending.intent);
     } else if (m.phaseTicks >= SERVE_DELAY_TICKS) {
       serve(m, t, court, out, null);
     }
@@ -272,11 +303,17 @@ export function tickMatch(m: Match, inputs: readonly MatchInput[], t: Tuning, co
     else if (m.phase === 'rally' && contacts.length > 0 && m.rally.lastHitter !== null) assign(m, other(m.rally.lastHitter), t, court, dt);
   }
 
+  // Duo : tes joueurs bougent, donc l'aide latérale se recalcule régulièrement pendant que la balle arrive.
+  if (m.mode === 'duo' && m.phase === 'rally' && m.tick % 10 === 0 && m.rally.lastHitter === 1) assign(m, 0, t, court, dt);
+
   for (const p of m.players) movePlayer(m, p, t, dt, court);
 
   if (m.phase === 'rally') {
-    const human = m.players[HUMAN_ID];
-    if (m.pending && isHittable(m, human, t, court)) hitHuman(m, human, m.pending.intent, t, court, out);
+    for (const p of m.players) {
+      if (!p.isHuman || !p.pending || !isHittable(m, p, t, court)) continue;
+      hitHuman(m, p, p.pending.intent, t, court, out);
+      break;
+    }
     for (const p of m.players) {
       if (p.isHuman || m.assigned[p.team] !== p.id) continue;
       if (isHittable(m, p, t, court) && (!p.target || m.tick >= p.target.tick)) hitAi(m, p, t, court, out);
@@ -312,7 +349,7 @@ function serve(m: Match, t: Tuning, court: CourtGeometry, out: MatchEvent[], int
   startServe(m.rally, m.servingTeam, box, receiverFor(m, court));
   m.phase = 'rally';
   m.phaseTicks = 0;
-  m.pending = null;
+  server.pending = null;
   m.shots = 1;
   m.rallyPerfects = 0;
   m.rallyOffGlass = 0;
@@ -326,9 +363,12 @@ function endRally(m: Match, out: MatchEvent[]): void {
   const result = m.rally.result!;
   m.phase = 'pause';
   m.phaseTicks = 0;
-  m.pending = null;
   m.assigned = [null, null];
-  for (const p of m.players) p.target = null;
+  for (const p of m.players) {
+    p.target = null;
+    p.assistX = null;
+    p.pending = null;
+  }
   if (result.reason === 'let') {
     out.push({ type: 'let' });
     m.pauseTicks = FAULT_PAUSE_TICKS;
@@ -365,7 +405,11 @@ function endRally(m: Match, out: MatchEvent[]): void {
 
 function assignNobody(m: Match, team: Team): void {
   m.assigned[team] = null;
-  for (const p of m.players) if (p.team === team) p.target = null;
+  for (const p of m.players) {
+    if (p.team !== team) continue;
+    p.target = null;
+    p.assistX = null;
+  }
 }
 
 /**
@@ -377,12 +421,22 @@ function assign(m: Match, team: Team, t: Tuning, court: CourtGeometry, dt: numbe
   if (!ball) return;
   const mates = m.players.filter((p) => p.team === team);
   const maxSteps = Math.ceil(4 / dt);
+  const zMax = maxContactZ(m, t);
   let shared: ContactWindow[] | null = null;
   const choices: (WindowChoice | null)[] = mates.map((p) => {
-    const windows = m.rally.serve ? findWindows(ball, m.rally, team, p.id, t.physics, t.play, court, dt, maxSteps) : (shared ??= findWindows(ball, m.rally, team, p.id, t.physics, t.play, court, dt, maxSteps));
+    const windows = m.rally.serve
+      ? findWindows(ball, m.rally, team, p.id, t.physics, t.play, court, dt, maxSteps, zMax)
+      : (shared ??= findWindows(ball, m.rally, team, p.id, t.physics, t.play, court, dt, maxSteps, zMax));
     const mine = windows.filter((w) => w.pos.x >= p.zone.xMin - CENTER_BAND && w.pos.x <= p.zone.xMax + CENTER_BAND);
     const speed = p.isHuman ? t.play.moveSpeed : p.ai.moveSpeed;
     const reaction = p.isHuman ? 0 : p.ai.reaction;
+    if (p.manual) p.assistX = assistAtDepth(mine, p, t);
+    // Occasion de smash pour l'IA : une balle haute, avant le rebond, près du filet.
+    if (m.mode === 'duo' && !p.isHuman && m.aiSmashRoll < p.ai.attackChance) {
+      const high = mine.filter((w) => w.kind === 'volley' && w.pos.z >= t.play.smashMinZ + 0.2 && Math.abs(w.pos.y - court.netY) < 6);
+      const smash = chooseWindow(high, p.pos, speed, dt, { ...t.play, idealContactZ: 2.2 }, 0);
+      if (smash?.reachable && smash.slack > reaction) return { ...smash, slack: smash.slack - reaction };
+    }
     const choice = chooseWindow(mine, p.pos, speed, dt, t.play, p.isHuman ? t.play.volleyPenalty : p.ai.volleyPenalty);
     return choice ? { ...choice, slack: choice.slack - reaction } : null;
   });
@@ -407,7 +461,47 @@ function assign(m: Match, team: Team, t: Tuning, court: CourtGeometry, dt: numbe
   });
 }
 
+/**
+ * Aide latérale (Duo) : parmi les instants jouables, celui qui se présente à la profondeur
+ * actuelle du joueur. S'il n'y en a pas (lob qui passe au-dessus, balle trop courte),
+ * pas d'aide : il faut reculer ou avancer soi-même.
+ */
+function assistAtDepth(windows: ContactWindow[], p: MatchPlayer, t: Tuning): number | null {
+  let best: ContactWindow | null = null;
+  let bestCost = Infinity;
+  for (const w of windows) {
+    if (Math.abs(w.pos.y - p.pos.y) > t.play.reach * 0.6) continue;
+    const cost = Math.abs(w.pos.z - t.play.idealContactZ) + 0.002 * w.steps;
+    if (cost < bestCost) {
+      bestCost = cost;
+      best = w;
+    }
+  }
+  return best ? best.pos.x : null;
+}
+
+function moveManual(m: Match, p: MatchPlayer, t: Tuning, dt: number, court: CourtGeometry): void {
+  if (m.phase === 'serve') return;
+  const speed = t.play.moveSpeed;
+  let vx = 0;
+  let vy = 0;
+  if (p.stick) {
+    vx = p.stick.x * speed;
+    vy = p.stick.y * speed;
+  } else if (p.assistX !== null && t.play.assist > 0 && m.phase === 'rally') {
+    const dx = p.assistX - p.pos.x;
+    const max = speed * t.play.assist;
+    vx = clamp(dx / dt, -max, max);
+  }
+  p.pos.x = clamp(p.pos.x + vx * dt, 0.4, court.width - 0.4);
+  p.pos.y = clamp(p.pos.y + vy * dt, 0.4, court.netY - 0.8);
+}
+
 function movePlayer(m: Match, p: MatchPlayer, t: Tuning, dt: number, court: CourtGeometry): void {
+  if (p.manual) {
+    moveManual(m, p, t, dt, court);
+    return;
+  }
   if (m.phase === 'serve' || m.tick < p.moveAfter) return;
   const speed = p.isHuman ? t.play.moveSpeed : p.ai.moveSpeed;
   const goal = p.target ? p.target.pos : p.home;
@@ -440,15 +534,18 @@ function hitHuman(m: Match, p: MatchPlayer, intent: ShotIntent, t: Tuning, court
   const maxAim = t.play.maxTimingAimErrorDeg * DEG;
   const aimErr = clamp(gaussian(m.rng, 0.5) * spread * maxAim, -maxAim, maxAim);
   const powerErr = gaussian(m.rng, 0.5) * spread * t.play.maxTimingPowerError;
-  const actual: ShotIntent = { ...intent, aim: intent.aim + aimErr, power: clamp(intent.power + powerErr, 0, 1) };
+  // Geste vers le bas : smash si la balle est assez haute, sinon amortie.
+  const kind: ShotKind = intent.kind === 'smash' && ball.pos.z < t.play.smashMinZ ? 'drop' : intent.kind;
+  const actual: ShotIntent = { ...intent, kind, aim: intent.aim + aimErr, power: clamp(intent.power + powerErr, 0, 1) };
   const vel = shotVelocity(actual, ball.pos, t.shot, t.physics, court, 1);
   let timing: Timing = quality >= 0.85 ? 'parfait' : 'juste';
-  if (timing !== 'parfait' && p.target) {
+  // En Duo c'est toi qui te places : « trop tôt / trop tard » n'a de sens qu'avec le placement automatique.
+  if (timing !== 'parfait' && p.target && !p.manual) {
     if (m.tick < p.target.tick - 4) timing = 'tot';
     else if (m.tick > p.target.tick + 4) timing = 'tard';
   }
   if (timing === 'parfait') m.rallyPerfects++;
-  launch(m, p, vel, out, intent.kind, quality, timing, actual.power, t, court);
+  launch(m, p, vel, out, kind, quality, timing, actual.power, t, court);
 }
 
 function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: MatchEvent[]): void {
@@ -461,6 +558,16 @@ function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: M
   const atNet = Math.abs(ball.pos.y - court.netY) < 4.5 && ball.pos.z >= 0.5;
   let kind: ShotKind;
   let target: Vec2;
+  if (m.mode === 'duo' && ball.pos.z >= t.play.smashMinZ + 0.2 && Math.abs(ball.pos.y - court.netY) < 7) {
+    // Balle haute à portée : smash vers le côté le plus dégagé.
+    const nearest = opponents.reduce((a, o) => (Math.abs(o.pos.x - ball.pos.x) < Math.abs(a.pos.x - ball.pos.x) ? o : a));
+    const tx = clamp((nearest.pos.x < court.width / 2 ? court.width - 2 : 2) + gaussian(m.rng, ai.aimError), 0.5, court.width - 0.5);
+    const intent: ShotIntent = { kind: 'smash', power: range(m.rng, 0.3, 0.9), aim: Math.atan2(tx - ball.pos.x, 8), swipeSpeed: 0, curvature: 0 };
+    const v = shotVelocity(intent, ball.pos, t.shot, t.physics, court, forward);
+    if (nextFloat(m.rng) < ai.errorChance) spoil(v, ball.pos, m.rng, t, court);
+    launch(m, p, v, out, 'smash', 1, 'juste', intent.power, t, court);
+    return;
+  }
   if (atNet && nextFloat(m.rng) < ai.attackChance) {
     // Volée amortie : courte, le long de la ligne la plus loin de l'adversaire le plus proche.
     kind = 'drop';
@@ -497,6 +604,26 @@ function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: M
   const vel = aimAt(ball.pos, target, kind, forward, t.shot, t.physics, court);
   if (nextFloat(m.rng) < ai.errorChance) spoil(vel, ball.pos, m.rng, t, court);
   launch(m, p, vel, out, kind, 1, 'juste', 0.5, t, court);
+}
+
+/**
+ * Duo : les adversaires jouent la vraie logique du padel. Ils montent au filet après leur lob
+ * ou quand tu es resté au fond, et reculent quand tu les lobes ou que tu tiens le filet.
+ */
+function updateAiHomes(m: Match, hitter: MatchPlayer, kind: ShotKind, court: CourtGeometry): void {
+  const aiTeam: Team = 1;
+  const ais = m.players.filter((p) => p.team === aiTeam);
+  const humans = m.players.filter((p) => p.team !== aiTeam);
+  const humansFromNet = humans.reduce((s, h) => s + (court.netY - h.pos.y), 0) / humans.length;
+  let depth: number | null = null;
+  if (hitter.team === aiTeam) {
+    const wantsNet = kind === 'lob' || humansFromNet > 5.5;
+    if (wantsNet && nextFloat(m.rng) < ais[0].ai.attackChance + 0.3) depth = NET_HOME_DEPTH;
+    else if (humansFromNet < 4) depth = ais[0].ai.homeDepth;
+  } else if (kind === 'lob') {
+    depth = ais[0].ai.homeDepth;
+  }
+  if (depth !== null) for (const p of ais) p.home.y = court.length - depth;
 }
 
 /** Faute directe de l'IA : frappe trop forte (vitre sans rebond), dans le filet, ou trop croisée. */
@@ -539,9 +666,11 @@ function launch(
   m.ball = createBall(ball.pos, vel);
   onHit(m.rally, p.team);
   m.shots++;
-  m.pending = null;
+  p.pending = null;
+  m.aiSmashRoll = nextFloat(m.rng);
   assignNobody(m, p.team);
   const receiving = other(p.team);
+  if (m.mode === 'duo') updateAiHomes(m, p, kind, court);
   for (const o of m.players) if (o.team === receiving && !o.isHuman) o.moveAfter = m.tick + Math.round(o.ai.reaction / FIXED_DT);
   assign(m, receiving, t, court, FIXED_DT * t.physics.timeScale);
   out.push({ type: 'hit', playerId: p.id, team: p.team, kind, quality, timing, power, offGlass });

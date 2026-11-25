@@ -16,8 +16,11 @@ export interface Swipe {
   viewportHeight: number;
 }
 
-/** 'drop' = volée amortie : courte et lente, jouée par l'IA au filet (pas encore au swipe). */
-export type ShotKind = 'drive' | 'lob' | 'drop';
+/**
+ * 'drop'  = amortie : courte et lente.
+ * 'smash' = frappe au-dessus de la tête, tendue vers le bas ; demande une balle haute.
+ */
+export type ShotKind = 'drive' | 'lob' | 'drop' | 'smash';
 
 export interface ShotIntent {
   kind: ShotKind;
@@ -30,8 +33,11 @@ export interface ShotIntent {
   curvature: number;
 }
 
-/** Traduit un geste en intention de coup. null = pas un coup (trop court, ou vers le bas). */
-export function analyzeSwipe(swipe: Swipe, s: ShotParams): ShotIntent | null {
+/**
+ * Traduit un geste en intention de coup. null = pas un coup (trop court).
+ * Un geste vers le bas n'est un coup (smash) que si `allowDown` est vrai (mode Duo).
+ */
+export function analyzeSwipe(swipe: Swipe, s: ShotParams, allowDown = false): ShotIntent | null {
   const pts = swipe.points;
   if (pts.length < 2) return null;
   const h = swipe.viewportHeight;
@@ -41,7 +47,7 @@ export function analyzeSwipe(swipe: Swipe, s: ShotParams): ShotIntent | null {
   const dy = b.y - a.y;
   const len = Math.hypot(dx, dy);
   if (len / h < s.minSwipeLength) return null;
-  if (dy >= 0) return null;
+  if (dy >= 0 && !allowDown) return null;
 
   // Vitesse de lâcher (fin du geste : la sensation de « fouetter ») ou vitesse moyenne,
   // la plus grande des deux : un pouce qui ralentit en fin de geste ne perd pas sa puissance.
@@ -55,7 +61,8 @@ export function analyzeSwipe(swipe: Swipe, s: ShotParams): ShotIntent | null {
 
   const curvature = pathCurvature(pts, dx, dy, len);
   const maxAim = s.maxAimDeg * DEG;
-  const aim = clamp(Math.atan2(dx, -dy) * s.aimGain, -maxAim, maxAim);
+  const aim = clamp(Math.atan2(dx, Math.abs(dy)) * s.aimGain, -maxAim, maxAim);
+  if (dy >= 0) return { kind: 'smash', power: raw, aim, swipeSpeed, curvature };
 
   let kind: ShotKind;
   let power: number;
@@ -110,6 +117,10 @@ export function shotVelocity(
   } else if (intent.kind === 'drop') {
     speed = lerp(s.dropMinSpeed, s.dropMaxSpeed, intent.power);
     elev = Math.max(s.dropElevationDeg * DEG, solveDriveElevation(origin, speed, intent.aim, s, p, court));
+  } else if (intent.kind === 'smash') {
+    // Le smash le plus plongeant qui passe encore le filet : plus on est près et haut, plus il tue.
+    speed = lerp(s.smashMinSpeed, s.smashMaxSpeed, intent.power);
+    elev = solveElevation(origin, speed, intent.aim, -s.smashMaxDownDeg * DEG, 10 * DEG, s.smashNetClearance, p, court);
   } else {
     speed = lerp(s.driveMinSpeed, s.driveMaxSpeed, intent.power);
     elev = solveDriveElevation(origin, speed, intent.aim, s, p, court);
@@ -135,20 +146,32 @@ export function solveDriveElevation(
   p: PhysicsParams,
   court: CourtGeometry,
 ): number {
-  let lo = s.driveMinElevationDeg * DEG;
-  let hi = s.driveMaxElevationDeg * DEG;
+  return solveElevation(origin, speed, aim, s.driveMinElevationDeg * DEG, s.driveMaxElevationDeg * DEG, s.netClearance, p, court);
+}
+
+/** Plus petit angle de départ entre `lo` et `hi` (radians) qui passe le filet avec la marge `clearance`. */
+export function solveElevation(
+  origin: Vec3,
+  speed: number,
+  aim: number,
+  lo: number,
+  hi: number,
+  clearance: number,
+  p: PhysicsParams,
+  court: CourtGeometry,
+): number {
   if (origin.y >= court.netY) return lo;
-  if (clearsNet(origin, directionVelocity(speed, lo, aim), s, p, court)) return lo;
-  if (!clearsNet(origin, directionVelocity(speed, hi, aim), s, p, court)) return hi;
+  if (clearsNet(origin, directionVelocity(speed, lo, aim), clearance, p, court)) return lo;
+  if (!clearsNet(origin, directionVelocity(speed, hi, aim), clearance, p, court)) return hi;
   for (let i = 0; i < 16; i++) {
     const mid = (lo + hi) / 2;
-    if (clearsNet(origin, directionVelocity(speed, mid, aim), s, p, court)) hi = mid;
+    if (clearsNet(origin, directionVelocity(speed, mid, aim), clearance, p, court)) hi = mid;
     else lo = mid;
   }
   return hi;
 }
 
-function clearsNet(origin: Vec3, vel: Vec3, s: ShotParams, p: PhysicsParams, court: CourtGeometry): boolean {
+function clearsNet(origin: Vec3, vel: Vec3, clearance: number, p: PhysicsParams, court: CourtGeometry): boolean {
   // Terrain sans filet : on veut la hauteur de passage, pas le rebond dans le filet.
   const netless: CourtGeometry = { ...court, netHeightCenter: -10, netHeightPost: -10 };
   const ball = createBall(origin, vel);
@@ -165,7 +188,7 @@ function clearsNet(origin: Vec3, vel: Vec3, s: ShotParams, p: PhysicsParams, cou
       const f = (court.netY - prevY) / (ball.pos.y - prevY);
       const z = prevZ + (ball.pos.z - prevZ) * f;
       const x = prevX + (ball.pos.x - prevX) * f;
-      return z - p.ballRadius >= netHeightAt(court, x) + s.netClearance;
+      return z - p.ballRadius >= netHeightAt(court, x) + clearance;
     }
     prevY = ball.pos.y;
     prevZ = ball.pos.z;

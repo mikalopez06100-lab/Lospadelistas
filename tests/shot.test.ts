@@ -71,4 +71,21 @@ describe('vitesse de frappe', () => {
     expect(pred.contacts[0].pos.y).toBeGreaterThan(COURT.netY);
     expect(pred.contacts[0].pos.y).toBeLessThan(COURT.length);
   });
+
+  it('un smash pris haut près du filet plonge et rebondit court ; pris du fond, il passe quand même le filet', () => {
+    for (const from of [{ x: 5, y: 8, z: 2.4 }, { x: 5, y: 3, z: 2.2 }]) {
+      const vel = shotVelocity({ kind: 'smash', power: 0.8, aim: 0, swipeSpeed: 0, curvature: 0 }, from, DEFAULT_SHOT, DEFAULT_PHYSICS, COURT);
+      const pred = predict(createBall(from, vel), DEFAULT_PHYSICS, COURT, FIXED_DT * DEFAULT_PHYSICS.timeScale, 4);
+      expect(pred.contacts[0].surface).toBe('ground');
+      expect(pred.contacts[0].pos.y).toBeGreaterThan(COURT.netY);
+    }
+    const near = shotVelocity({ kind: 'smash', power: 0.8, aim: 0, swipeSpeed: 0, curvature: 0 }, { x: 5, y: 8, z: 2.4 }, DEFAULT_SHOT, DEFAULT_PHYSICS, COURT);
+    expect(near.z).toBeLessThan(0);
+  });
+
+  it('un geste vers le bas n’est un smash qu’en mode Duo', () => {
+    const down = { points: line(200, 400, 210, 650, 120), viewportHeight: H };
+    expect(analyzeSwipe(down, DEFAULT_SHOT)).toBeNull();
+    expect(analyzeSwipe(down, DEFAULT_SHOT, true)?.kind).toBe('smash');
+  });
 });

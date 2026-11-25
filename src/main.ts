@@ -4,12 +4,14 @@ import { canVibrate, Sfx, vibrate } from './audio/sfx';
 import { COURT, FIXED_DT, STYLE, type AiLevel } from './core/constants';
 import { clamp, type Vec3 } from './core/math/vec3';
 import type { ContactEvent } from './core/physics/step';
-import { createMatch, HUMAN_ID, isHittable, tickMatch, type Match, type MatchEvent, type MatchInput } from './core/play/match';
+import { createMatch, HUMAN_ID, isHittable, tickMatch, type ControlMode, type Match, type MatchEvent, type MatchInput } from './core/play/match';
+import { predict } from './core/physics/predict';
 import type { Recording } from './core/play/replay';
 import { REASON_FR } from './core/rules/rally';
 import { pointsLabel } from './core/rules/score';
 import { createSandbox, launchBall, relaunch, tickSandbox } from './core/sandbox';
 import { analyzeSwipe, shotVelocity, type Swipe } from './core/shot/swipeToShot';
+import { attachDuo } from './input/duoTouch';
 import { attachSwipe } from './input/touch';
 import { renderCourtLayer } from './render/courtLayer';
 import { Fx } from './render/fx';
@@ -50,6 +52,8 @@ if (!['facile', 'moyen', 'fort'].includes(aiLevel)) aiLevel = 'facile';
 let debug = readString('rebote.debug', '0') === '1';
 let haptics = readString('rebote.haptics', '1') === '1';
 sfx.enabled = readString('rebote.sound', '1') === '1';
+/** Duo = tu diriges tes deux joueurs à deux pouces ; solo = le mode classique à un pouce. */
+let controlMode: ControlMode = readString('rebote.control', 'duo') === 'solo' ? 'solo' : 'duo';
 let preview: ShotPreview | null = null;
 let sandboxPlayerX = court.width / 2;
 
@@ -66,8 +70,9 @@ const SLOW_MS = 1300;
 
 function newGame(): void {
   const seed = (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0;
-  game = createMatch(seed, aiLevel, court, tuning.match.gamesToWin);
-  recording = { version: 2, seed, aiLevel, tuning: structuredClone(tuning), inputs: [], ticks: 0 };
+  game = createMatch(seed, aiLevel, court, tuning.match.gamesToWin, controlMode);
+  recording = { version: 3, seed, aiLevel, mode: controlMode, tuning: structuredClone(tuning), inputs: [], ticks: 0 };
+  landing = null;
   pendingInputs.length = 0;
   trail.length = 0;
   slowUntil = 0;
@@ -103,12 +108,39 @@ function previewFromSwipe(swipe: Swipe): ShotPreview | null {
   return { intent, origin, vel: shotVelocity(intent, origin, tuning.shot, tuning.physics, court) };
 }
 
+function isDuoPlaying(): boolean {
+  return screen === 'match' && game.mode === 'duo';
+}
+
+function pushInput(input: MatchInput): void {
+  pendingInputs.push(input);
+  recording.inputs.push(input);
+}
+
+// Mode Duo : un pouce par joueur, sur tout l'écran.
+const duo = attachDuo(canvas, {
+  enabled: isDuoPlaying,
+  flickMaxMs: 300,
+  stickDelayMs: 110,
+  radiusPx: 56,
+  onStick: (playerId, stick) => {
+    if (isDuoPlaying()) pushInput({ tick: game.tick, playerId, stick });
+  },
+  onFlick: (playerId, swipe) => {
+    if (!isDuoPlaying()) return;
+    const intent = analyzeSwipe(swipe, { ...tuning.shot, lobMode: 'speed' }, true);
+    if (intent) pushInput({ tick: game.tick, playerId, intent });
+  },
+});
+
+// Mode classique et bac à sable : un seul swipe, depuis la moitié basse de l'écran.
 attachSwipe(canvas, {
   onMove: (swipe) => {
-    if (debug) preview = previewFromSwipe(swipe);
+    if (debug && !isDuoPlaying()) preview = previewFromSwipe(swipe);
   },
   onEnd: (swipe) => {
     preview = null;
+    if (isDuoPlaying()) return;
     const intent = analyzeSwipe(swipe, tuning.shot);
     if (!intent) return;
     if (screen === 'sandbox') {
@@ -118,9 +150,7 @@ attachSwipe(canvas, {
       trail.length = 0;
       sfx.hit(intent.power);
     } else if (screen === 'match') {
-      const input = { tick: game.tick, intent };
-      pendingInputs.push(input);
-      recording.inputs.push(input);
+      pushInput({ tick: game.tick, playerId: HUMAN_ID, intent });
     }
   },
   onCancel: () => {
@@ -162,6 +192,12 @@ function refreshUi(): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-level button')) b.classList.toggle('active', b.dataset.value === aiLevel);
   for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-format button'))
     b.classList.toggle('active', Number(b.dataset.value) === tuning.match.gamesToWin);
+  for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-control button')) b.classList.toggle('active', b.dataset.value === controlMode);
+  $('howto').textContent =
+    controlMode === 'duo'
+      ? 'Un pouce par joueur : moitié gauche de l’écran pour celui de gauche, moitié droite pour l’autre. Glisse pour le déplacer, coup de pouce sec pour frapper : vers le haut = coup tendu, vers le haut en douceur = lob, vers le bas = smash sur balle haute (amortie sinon). Monte au filet à deux, recule quand on te lobe.'
+      : 'Ton joueur se place tout seul. Quand l’anneau vert s’allume sous lui, swipe vers le haut : la direction vise, la vitesse dose.';
+  $('opt-lob').classList.toggle('hidden', controlMode === 'duo');
   $('btn-resume').classList.toggle('hidden', !matchInProgress());
   $('btn-play').textContent = matchInProgress() ? 'Nouveau match' : 'Jouer';
   const best = readBest()[aiLevel] ?? 0;
@@ -186,9 +222,14 @@ function refreshHint(): void {
   let text = '';
   if (screen === 'sandbox') text = sandbox.ball ? '' : 'Swipe vers le haut depuis le bas de l’écran';
   else if (screen === 'match') {
-    if (game.phase === 'serve' && game.serverId === HUMAN_ID) text = `À toi de servir${game.serveNumber === 2 ? ' (2e balle)' : ''} : swipe vers le haut`;
-    else if (game.score.games[0] + game.score.games[1] === 0 && game.score.points[0] + game.score.points[1] === 0 && game.phase !== 'over')
-      text = 'Quand l’anneau vert s’allume sous toi, swipe vers le haut';
+    const firstPoint = game.score.games[0] + game.score.games[1] === 0 && game.score.points[0] + game.score.points[1] === 0 && game.phase !== 'over';
+    const second = game.serveNumber === 2 ? ' (2e balle)' : '';
+    if (game.mode === 'duo') {
+      if (game.phase === 'serve' && game.servingTeam === 0)
+        text = `Service${second} : coup de pouce vers le haut, côté ${game.serverId === HUMAN_ID ? 'droit' : 'gauche'} de l’écran`;
+      else if (firstPoint) text = 'Glisse = déplacer · coup sec ↑ = tendu · ↑ doux = lob · ↓ = smash';
+    } else if (game.phase === 'serve' && game.serverId === HUMAN_ID) text = `À toi de servir${second} : swipe vers le haut`;
+    else if (firstPoint) text = 'Quand l’anneau vert s’allume sous toi, swipe vers le haut';
   }
   if (text === lastHint) return;
   lastHint = text;
@@ -251,6 +292,14 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-level button'
     refreshUi();
   });
 }
+for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-control button')) {
+  b.addEventListener('click', () => {
+    controlMode = b.dataset.value === 'solo' ? 'solo' : 'duo';
+    writeString('rebote.control', controlMode);
+    newGame();
+    refreshUi();
+  });
+}
 for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-format button')) {
   b.addEventListener('click', () => {
     tuning.match.gamesToWin = Number(b.dataset.value);
@@ -269,7 +318,8 @@ mountTuningPanel(panel, tuning, (path) => {
 
 function updateScore(): void {
   const s = game.score;
-  const serving = game.servingTeam === 0 ? (game.serverId === HUMAN_ID ? 'tu sers' : 'ton partenaire sert') : 'ils servent';
+  const mine = game.players[game.serverId].isHuman;
+  const serving = game.servingTeam === 0 ? (mine ? 'tu sers' : 'ton partenaire sert') : 'ils servent';
   const games = s.gamesToWin > 1 ? `<span class="me">Nous ${s.games[0]}</span> · <span class="ai">Eux ${s.games[1]}</span> · ` : '';
   scoreEl.innerHTML = `${games}<span class="style">Style ${game.style}</span><small>${pointsLabel(s)} · ${serving}</small>`;
 }
@@ -292,23 +342,32 @@ let overShowAt = 0;
 
 function onGameEvent(e: MatchEvent): void {
   if (e.type === 'contact') {
+    landingDirty = true;
     fx.add(e.contact);
     sfx.contact(e.contact.surface, e.contact.normalSpeed);
   } else if (e.type === 'serve') {
+    landingDirty = true;
     anims[e.serverId].swingTick = game.tick;
     sfx.hit(0.35);
     updateScore();
   } else if (e.type === 'hit') {
     // L'IA a commencé son geste avant (preSwing) : au contact, elle en est à CONTACT_AT.
     // Toi, tu déclenches la frappe : le geste démarre presque au contact pour claquer tout de suite.
-    anims[e.playerId].swingTick = game.tick - CONTACT_TICKS * (e.playerId === HUMAN_ID ? 0.5 : 1);
-    sfx.hit(e.power);
-    if (e.playerId !== HUMAN_ID) return;
+    const mine = game.players[e.playerId].isHuman;
+    anims[e.playerId].swingTick = game.tick - CONTACT_TICKS * (mine ? 0.5 : 1);
+    landingDirty = true;
+    sfx.hit(e.kind === 'smash' ? 1 : e.power);
+    if (!mine) {
+      if (e.kind === 'smash') showFeedback('Smash adverse !', 'bad', 600);
+      return;
+    }
     if (e.timing === 'parfait') sfx.perfect();
-    if (e.power > 0.7) vibrate(18, haptics);
+    if (e.power > 0.7 || e.kind === 'smash') vibrate(e.kind === 'smash' ? 30 : 18, haptics);
     const mistimed = e.timing === 'tot' || e.timing === 'tard';
-    const label = e.offGlass && !mistimed ? 'Sortie de vitre !' : TIMING_FR[e.timing];
-    showFeedback(label, mistimed ? 'bad' : e.timing === 'parfait' || e.offGlass ? 'good' : 'info', 700);
+    // En Duo, on nomme le coup joué : c'est comme ça qu'on apprend les trois gestes.
+    const named = e.kind === 'smash' ? 'Smash !' : e.kind === 'drop' ? 'Amortie' : e.kind === 'lob' && game.mode === 'duo' ? 'Lob' : null;
+    const label = named ?? (e.offGlass && !mistimed ? 'Sortie de vitre !' : TIMING_FR[e.timing]);
+    showFeedback(label, mistimed ? 'bad' : e.timing === 'parfait' || e.offGlass || e.kind === 'smash' ? 'good' : 'info', 700);
   } else if (e.type === 'fault') {
     sfx.fault();
     showFeedback(e.double ? 'Double faute' : 'Faute · 2e balle', 'bad', 1200);
@@ -320,6 +379,7 @@ function onGameEvent(e: MatchEvent): void {
 }
 
 function onPoint(e: Extract<MatchEvent, { type: 'point' }>): void {
+  landing = null;
   const ours = e.result.winner === 0;
   const rebote = e.winnerGlass >= STYLE.slowMoGlassCount;
   if (rebote) {
@@ -423,6 +483,7 @@ function frame(now: number): void {
   refreshHint();
 
   drawScene(ctx, proj, courtLayer, fx, sceneInput(acc / FIXED_DT, slow), widthCss, heightCss);
+  if (isDuoPlaying()) drawSticks();
   requestAnimationFrame(frame);
 }
 
@@ -485,8 +546,46 @@ function swingProgress(startTick: number, tick: number, alpha: number): number |
   return s >= 0 && s <= 1 ? s : null;
 }
 
+/** Sticks flottants : un anneau là où le pouce s'est posé, un point là où il est. */
+function drawSticks(): void {
+  for (const t of duo.touches()) {
+    if (!t.stickActive) continue;
+    const r = 56;
+    let dx = t.x - t.x0;
+    let dy = t.y - t.y0;
+    const n = Math.hypot(dx, dy);
+    if (n > r) {
+      dx = (dx / n) * r;
+      dy = (dy / n) * r;
+    }
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.beginPath();
+    ctx.arc(t.x0, t.y0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.beginPath();
+    ctx.arc(t.x0 + dx, t.y0 + dy, 20, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** Point de chute de la balle dans ton camp : en Duo, c'est le repère pour te placer. */
+let landing: Vec3 | null = null;
+let landingDirty = false;
+function updateLanding(): void {
+  landingDirty = false;
+  landing = null;
+  const ball = game.ball;
+  if (game.mode !== 'duo' || game.phase !== 'rally' || !ball || game.rally.lastHitter !== 1 || game.rally.receiverBounces > 0) return;
+  const pred = predict(ball, tuning.physics, court, FIXED_DT * tuning.physics.timeScale, 3, 8);
+  const first = pred.contacts[0];
+  if (first && first.surface === 'ground' && first.pos.y < court.netY) landing = first.pos;
+}
+
 function sceneInput(alpha: number, slow: boolean): SceneInput {
-  const common = { alpha, tuning, court, debug, preview, fps, trail };
+  if (landingDirty && screen === 'match') updateLanding();
+  const common = { alpha, tuning, court, debug, preview, fps, trail, landing: screen === 'match' ? landing : null };
   if (screen === 'sandbox') {
     return {
       ...common,
@@ -536,7 +635,7 @@ function sceneInput(alpha: number, slow: boolean): SceneInput {
       prep,
       idlePhase: game.tick * 0.03 + pl.id * 1.7,
       scale: tuning.view.playerScale,
-      marker: pl.isHuman,
+      marker: pl.isHuman && game.mode === 'solo',
       hittable: pl.isHuman && isHittable(game, pl, tuning, court),
       target: pl.target?.pos ?? null,
     };

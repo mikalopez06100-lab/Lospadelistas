@@ -3,9 +3,15 @@
 Jeu mobile de padel arcade, jouable d'une main, en sessions de 2 à 3 minutes.
 Le cœur du jeu : **jouer avec les vitres**.
 
-**État : phase 3, prototype complet.** Match en double (toi + un partenaire IA contre deux IA)
-avec service, point en or, sons, vibrations, ralenti « Rebote », score de style, écran d'accueil
-et installation sur l'écran d'accueil du téléphone (PWA, jouable hors ligne).
+**État : prototype complet, avec deux modes de jeu.**
+
+- **Duo (2 pouces, par défaut)** : tu diriges tes deux joueurs, un pouce chacun. Tu les montes
+  au filet, tu volleyes, tu recules quand on te lobe, tu smashes. C'est la vraie logique du padel.
+- **Classique (1 pouce)** : ton joueur se place tout seul, tu ne fais que frapper, avec un
+  partenaire IA.
+
+Dans les deux cas : match en double avec service, point en or, sons, vibrations, ralenti
+« Rebote », score de style, et installation sur l'écran d'accueil du téléphone (PWA, hors ligne).
 
 Jouable en ligne : https://lospadelistas.vercel.app
 
@@ -17,7 +23,8 @@ Prérequis : Node 20 ou plus récent.
 npm install
 npm run dev        # serveur de dev, accessible sur le réseau local
 npm test           # tests unitaires (physique, geste → coup, règles, échange, rejeu)
-npm run sim        # équilibrage : matchs simulés par niveau d'IA (JEUX=1 npm run sim pour le format court)
+npm run sim        # équilibrage : matchs simulés par niveau d'IA
+                   # options : REBOTE_MODE=duo  REBOTE_TACTIQUE=filet  REBOTE_JEUX=1
 npm run build      # build de production dans dist/
 ```
 
@@ -38,7 +45,28 @@ pas pour tester l'installation : pour ça, utilise l'adresse Vercel.
 
 ## Comment jouer
 
-### Match en double (phase 2)
+### Mode Duo : un pouce par joueur
+
+- **Moitié gauche de l'écran = ton joueur de gauche, moitié droite = ton joueur de droite.**
+- **Glisser le pouce** : un stick apparaît là où tu poses le doigt, le joueur se déplace dans
+  cette direction (vers le haut de l'écran = vers le filet).
+- **Coup de pouce sec** (geste de moins de 0,3 s) : le joueur frappe.
+  - vers le haut, rapide : **coup tendu** ;
+  - vers le haut, en douceur : **lob** ;
+  - vers le bas : **smash** si la balle est haute (au moins 1,6 m), **amortie** sinon.
+  La direction du geste vise à gauche ou à droite. Le nom du coup s'affiche à chaque frappe.
+- **Repère jaune au sol** : l'endroit où la balle va rebondir dans ton camp. **Anneau vert** sous
+  un joueur : la balle est à sa portée, c'est le moment de frapper.
+- **Aide latérale** : un joueur que tu ne touches pas se décale tout seul en largeur vers la
+  balle, mais seulement si elle passe à sa profondeur. Monter et reculer reste ta décision : si
+  on te lobe alors que tu es au filet, personne ne recule à ta place. L'aide se règle ou se coupe
+  dans ⚙ (« Duo — aide latérale »).
+- **Les adversaires jouent la même logique** : ils montent au filet après un lob ou quand tu
+  restes au fond, reculent quand tu les lobes, et smashent les balles hautes près du filet. Un
+  smash qui rebondit et sort par-dessus la vitre de fond donne le point (« sortie après rebond »).
+- Service : coup de pouce vers le haut du côté du joueur qui sert (indiqué à l'écran).
+
+### Mode Classique : match en double à un pouce
 
 - **Les équipes** : toi (orange) à droite, ton partenaire IA (saumon) à gauche, contre deux IA
   (bleu). Chacun couvre sa moitié du terrain. Dans la bande centrale, la balle revient au plus
@@ -127,6 +155,8 @@ Deux façons de faire :
 | `play.maxTimingAimErrorDeg` / `maxTimingPowerError` | Pénalité d'un mauvais timing. |
 | `AI_LEVELS` | Les trois niveaux d'IA (non réglables dans le panneau ⚙). |
 | `match.gamesToWin` | Nombre de jeux gagnants pour le match (1 par défaut). |
+| `play.assist`, `play.overheadZ`, `play.smashMinZ` | Mode Duo : aide latérale, hauteur max jouable au-dessus de la tête, hauteur min pour smasher. |
+| `shot.smash*` | Vitesses du smash, angle plongeant maximum, marge au-dessus du filet. |
 
 Le panneau ⚙ garde tes valeurs sur ce téléphone. Après une modification de `constants.ts`,
 clique sur « Valeurs par défaut » dans le panneau pour repartir des nouvelles valeurs.
@@ -151,7 +181,7 @@ src/
     sandbox.ts            état du bac à sable (phase 0)
   render/      Canvas 2D : lit l'état sans jamais le modifier
     player.ts             joueurs dessinés en squelette 3D projeté : course, armé, frappe
-  input/       Pointer Events → swipes horodatés
+  input/       touch.ts (un swipe, mode classique) et duoTouch.ts (deux pouces : stick + frappe)
   audio/       sons synthétisés (WebAudio) et vibrations
   app/         panneau de réglages
 public/        manifest, service worker et icônes de la PWA
@@ -180,14 +210,27 @@ Choix techniques :
 
 `npm run sim` joue des matchs complets avec un joueur-robot à ta place. Le robot connaît l'instant
 de frappe idéal mais swipe avec une erreur de timing aléatoire (60 ms ≈ bon joueur, 120 ms ≈
-joueur moyen), en visant le côté libre. Mesures pour des matchs en 3 jeux :
+joueur moyen). En Duo il dirige aussi les deux joueurs au stick.
 
-| Robot | IA facile | IA moyen | IA fort |
-|---|---|---|---|
-| Bon (60 ms) | gagne 6/6 | gagne 5/6 | gagne 2/6 |
-| Moyen (120 ms) | gagne 5/6 | gagne 3/6 | gagne 0/6 |
+Matchs en 3 jeux gagnés par le robot, sur 6 :
 
-Les niveaux sont bien ordonnés. En revanche, **un match en 3 jeux dure 8 à 12 minutes** : la
-moitié des échanges dépasse 9 à 18 coups, et certains dépassent 50. C'est loin des sessions de 2
-à 3 minutes visées, d'où le format en 1 jeu par défaut. Ce robot n'est qu'une approximation :
-seul un test sur téléphone dira si le jeu est trop facile, trop dur ou trop passif.
+| Mode | Robot | IA facile | IA moyen | IA fort |
+|---|---|---|---|---|
+| Classique | bon (60 ms) | 6 | 5 | 2 |
+| Classique | moyen (120 ms) | 5 | 3 | 0 |
+| Duo, reste au fond | bon | 6 | 6 | 2 |
+| Duo, reste au fond | moyen | 2 | 0 | 0 |
+| Duo, monte au filet | bon | 6 | 6 | 1 |
+| Duo, monte au filet | moyen | 3 | 0 | 0 |
+
+À lire avec prudence :
+
+- **Le Duo est plus dur que le Classique** pour un joueur moyen, parce qu'il faut se placer.
+- **Monter au filet ne rapporte pas encore nettement plus que rester au fond**, alors que c'est
+  le cœur du padel. Soit le robot monte mal, soit le jeu ne récompense pas assez le filet. C'est
+  le premier point à vérifier en jouant.
+- **Un match en 3 jeux dure 8 à 12 minutes** (échange médian de 8 à 28 coups), d'où le format
+  en 1 jeu par défaut.
+
+Ce robot n'est qu'une approximation : seul un test sur téléphone dira si le jeu est trop facile,
+trop dur ou trop passif.

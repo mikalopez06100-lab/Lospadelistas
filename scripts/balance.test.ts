@@ -2,7 +2,7 @@
  * Équilibrage : simule des matchs complets par niveau d'IA, avec un joueur-robot dont le
  * timing a une erreur aléatoire (σ = 60 ms ≈ bon joueur, 120 ms ≈ joueur moyen).
  * Affiche durée, score, longueur des échanges et façon dont les points se terminent.
- * Lancer : npm run sim  (JEUX=1 npm run sim pour le format court)
+ * Lancer : npm run sim  (REBOTE_JEUX=1 pour le format court, REBOTE_MODE=duo, REBOTE_TACTIQUE=filet)
  */
 import { it } from 'vitest';
 import { COURT, FIXED_DT, createDefaultTuning, type AiLevel } from '../src/core/constants';
@@ -10,7 +10,10 @@ import { playBotMatch } from './bot';
 
 it('équilibrage des matchs', () => {
   const t = createDefaultTuning();
-  t.match.gamesToWin = Number(process.env.JEUX ?? 3);
+  t.match.gamesToWin = Number(process.env.REBOTE_JEUX ?? 3);
+  const mode = (process.env.REBOTE_MODE ?? 'solo') as 'solo' | 'duo';
+  const tactic = (process.env.REBOTE_TACTIQUE ?? 'fond') as 'fond' | 'filet';
+  console.log(`mode ${mode}${mode === 'duo' ? ` · tactique ${tactic}` : ''} · ${t.match.gamesToWin} jeu(x) gagnant(s)`);
   for (const sigma of [60, 120]) {
     for (const level of ['facile', 'moyen', 'fort'] as AiLevel[]) {
       const durations: number[] = [];
@@ -23,7 +26,7 @@ it('équilibrage des matchs', () => {
       let glass2 = 0;
       let style = 0;
       for (let seed = 1; seed <= 6; seed++) {
-        const { match, events } = playBotMatch(seed * 31, level, sigma, t, COURT, 30 * 60);
+        const { match, events } = playBotMatch(seed * 31, level, sigma, t, COURT, 30 * 60, mode, tactic);
         durations.push((match.tick * FIXED_DT) / 60);
         if (match.score.winner === 0) won++;
         style += match.style;

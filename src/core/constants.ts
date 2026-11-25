@@ -121,6 +121,11 @@ export interface ShotParams {
   dropMinSpeed: number;
   dropMaxSpeed: number;
   dropElevationDeg: number;
+  /** Smash : vitesses, angle plongeant maximum (°) et marge au-dessus du filet (m). */
+  smashMinSpeed: number;
+  smashMaxSpeed: number;
+  smashMaxDownDeg: number;
+  smashNetClearance: number;
   /** Mode 'hook' : courbure (écart max à la corde / longueur) au-delà de laquelle c'est un lob. */
   hookCurvature: number;
   /** Angle latéral maximum du coup. */
@@ -151,6 +156,10 @@ export const DEFAULT_SHOT: ShotParams = {
   dropMinSpeed: 5,
   dropMaxSpeed: 11,
   dropElevationDeg: 12,
+  smashMinSpeed: 20,
+  smashMaxSpeed: 29,
+  smashMaxDownDeg: 30,
+  smashNetClearance: 0.15,
   hookCurvature: 0.12,
   maxAimDeg: 50,
   aimGain: 1.3,
@@ -202,6 +211,16 @@ export interface PlayParams {
   maxTimingPowerError: number;
   /** Pénalité de choix pour une volée (le placement préfère jouer après le rebond). */
   volleyPenalty: number;
+  /** Mode Duo : hauteur maximale d'une balle jouable au-dessus de la tête (m). */
+  overheadZ: number;
+  /** Mode Duo : hauteur minimale de la balle pour smasher ; plus bas, le geste donne une amortie. */
+  smashMinZ: number;
+  /**
+   * Mode Duo : aide latérale. Un joueur que tu ne touches pas se décale tout seul vers la balle,
+   * en largeur seulement, à cette fraction de sa vitesse (0 = aucune aide). La profondeur
+   * (monter au filet, reculer) reste toujours ta décision.
+   */
+  assist: number;
 }
 
 export const DEFAULT_PLAY: PlayParams = {
@@ -214,6 +233,9 @@ export const DEFAULT_PLAY: PlayParams = {
   maxTimingAimErrorDeg: 14,
   maxTimingPowerError: 0.25,
   volleyPenalty: 0.8,
+  overheadZ: 2.7,
+  smashMinZ: 1.6,
+  assist: 0.7,
 };
 
 export type AiLevel = 'facile' | 'moyen' | 'fort';

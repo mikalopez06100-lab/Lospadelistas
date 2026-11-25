@@ -1,5 +1,5 @@
 import type { AiLevel, CourtGeometry, Tuning } from '../constants';
-import { createMatch, tickMatch, type Match, type MatchEvent, type MatchInput } from './match';
+import { createMatch, tickMatch, type ControlMode, type Match, type MatchEvent, type MatchInput } from './match';
 
 /**
  * Enregistrement d'un match : graine + réglages + entrées horodatées en ticks.
@@ -8,16 +8,17 @@ import { createMatch, tickMatch, type Match, type MatchEvent, type MatchInput } 
  * donc pas de l'écran de celui qui a joué.
  */
 export interface Recording {
-  version: 2;
+  version: 3;
   seed: number;
   aiLevel: AiLevel;
+  mode: ControlMode;
   tuning: Tuning;
   inputs: MatchInput[];
   ticks: number;
 }
 
 export function replay(rec: Recording, court: CourtGeometry, onEvent?: (e: MatchEvent, m: Match) => void): Match {
-  const m = createMatch(rec.seed, rec.aiLevel, court, rec.tuning.match.gamesToWin);
+  const m = createMatch(rec.seed, rec.aiLevel, court, rec.tuning.match.gamesToWin, rec.mode);
   const events: MatchEvent[] = [];
   let next = 0;
   while (m.tick < rec.ticks) {

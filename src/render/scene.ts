@@ -42,6 +42,8 @@ export interface SceneInput {
   trail: readonly Vec3[];
   /** Ralenti « Rebote » : traînée et balle en surbrillance. */
   glow: boolean;
+  /** Point de chute prévu de la balle dans ton camp (repère de placement), ou null. */
+  landing: Vec3 | null;
 }
 
 const tmp: ScreenPoint = { x: 0, y: 0 };
@@ -75,6 +77,16 @@ export function drawScene(
 
   if (prediction) drawPrediction(ctx, proj, prediction, 'rgba(255, 235, 80, 0.85)');
   if (previewPrediction) drawPrediction(ctx, proj, previewPrediction, 'rgba(255, 140, 60, 0.9)');
+  if (s.landing) {
+    const pulse = 0.6 + 0.4 * Math.sin(s.tick * 0.25);
+    ctx.strokeStyle = `rgba(228, 242, 58, ${0.85 * pulse})`;
+    ctx.lineWidth = 2;
+    groundCircle(ctx, proj, s.landing.x, s.landing.y, 0.45);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(228, 242, 58, 0.25)';
+    groundCircle(ctx, proj, s.landing.x, s.landing.y, 0.18);
+    ctx.fill();
+  }
   if (ball) drawTrail(ctx, proj, s.trail, view, s.glow);
   for (const pl of s.players) {
     if (pl.hittable) drawHitRing(ctx, proj, pl, s.tick);

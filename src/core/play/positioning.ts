@@ -27,6 +27,7 @@ export function findWindows(
   court: CourtGeometry,
   dt: number,
   maxSteps: number,
+  maxZ = play.maxContactZ,
 ): ContactWindow[] {
   const b = cloneBall(ball);
   const r = cloneRally(rally);
@@ -47,7 +48,7 @@ export function findWindows(
     // Un échantillon tous les 2 pas suffit (≈ 1 cm à 1 m/s près de la frappe) et divise le coût.
     if (i % 2 !== 0) continue;
     if (!canHit(r, side, b.pos.y, court, playerId)) continue;
-    if (b.pos.z < play.minContactZ || b.pos.z > play.maxContactZ) continue;
+    if (b.pos.z < play.minContactZ || b.pos.z > maxZ) continue;
     out.push({
       steps: i,
       pos: { ...b.pos },
