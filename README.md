@@ -150,6 +150,7 @@ src/
     rng.ts                aléatoire à graine (jamais Math.random dans core/)
     sandbox.ts            état du bac à sable (phase 0)
   render/      Canvas 2D : lit l'état sans jamais le modifier
+    player.ts             joueurs dessinés en squelette 3D projeté : course, armé, frappe
   input/       Pointer Events → swipes horodatés
   audio/       sons synthétisés (WebAudio) et vibrations
   app/         panneau de réglages

@@ -62,6 +62,7 @@ const SECTIONS: { title: string; sliders: Slider[] }[] = [
       { path: 'view.camDistance', label: 'Recul caméra (m)', min: 15, max: 100, step: 1 },
       { path: 'view.camHeight', label: 'Hauteur caméra (m)', min: 10, max: 120, step: 1 },
       { path: 'view.ballVisualRadius', label: 'Taille balle (m)', min: 0.04, max: 0.2, step: 0.005 },
+      { path: 'view.playerScale', label: 'Taille des joueurs', min: 0.8, max: 1.8, step: 0.05 },
       { path: 'view.heightSizeGain', label: 'Grossissement / hauteur', min: 0, max: 0.4, step: 0.01 },
       { path: 'view.shadowOffsetX', label: 'Décalage ombre X', min: -0.5, max: 0.5, step: 0.01 },
       { path: 'view.shadowOffsetY', label: 'Décalage ombre Y', min: -0.5, max: 0.5, step: 0.01 },

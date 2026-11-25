@@ -71,6 +71,7 @@ function newGame(): void {
   pendingInputs.length = 0;
   trail.length = 0;
   slowUntil = 0;
+  resetAnims();
   updateScore();
 }
 
@@ -113,6 +114,7 @@ attachSwipe(canvas, {
     if (screen === 'sandbox') {
       const shot = previewFromSwipe(swipe)!;
       launchBall(sandbox, shot.origin, shot.vel);
+      sandboxAnim.swingTick = sandbox.tick;
       trail.length = 0;
       sfx.hit(intent.power);
     } else if (screen === 'match') {
@@ -293,15 +295,20 @@ function onGameEvent(e: MatchEvent): void {
     fx.add(e.contact);
     sfx.contact(e.contact.surface, e.contact.normalSpeed);
   } else if (e.type === 'serve') {
+    anims[e.serverId].swingTick = game.tick;
     sfx.hit(0.35);
     updateScore();
   } else if (e.type === 'hit') {
+    // L'IA a commencé son geste avant (preSwing) : au contact, elle en est à CONTACT_AT.
+    // Toi, tu déclenches la frappe : le geste démarre presque au contact pour claquer tout de suite.
+    anims[e.playerId].swingTick = game.tick - CONTACT_TICKS * (e.playerId === HUMAN_ID ? 0.5 : 1);
     sfx.hit(e.power);
     if (e.playerId !== HUMAN_ID) return;
     if (e.timing === 'parfait') sfx.perfect();
     if (e.power > 0.7) vibrate(18, haptics);
-    const label = e.offGlass && e.timing !== 'tot' && e.timing !== 'tard' ? 'Sortie de vitre !' : TIMING_FR[e.timing];
-    showFeedback(label, e.timing === 'parfait' || e.offGlass ? 'good' : e.timing === 'juste' ? 'info' : 'bad', 700);
+    const mistimed = e.timing === 'tot' || e.timing === 'tard';
+    const label = e.offGlass && !mistimed ? 'Sortie de vitre !' : TIMING_FR[e.timing];
+    showFeedback(label, mistimed ? 'bad' : e.timing === 'parfait' || e.offGlass ? 'good' : 'info', 700);
   } else if (e.type === 'fault') {
     sfx.fault();
     showFeedback(e.double ? 'Double faute' : 'Faute · 2e balle', 'bad', 1200);
@@ -406,6 +413,7 @@ function frame(now: number): void {
       while (pendingInputs.length && pendingInputs[0].tick < game.tick) pendingInputs.shift();
       recording.ticks = game.tick;
       for (const e of gameEvents) onGameEvent(e);
+      updateAnims();
       if (game.tick % 2 === 0) pushTrail(game.ball?.status === 'flying' ? game.ball.pos : undefined);
     }
     acc -= FIXED_DT;
@@ -419,7 +427,63 @@ function frame(now: number): void {
 }
 
 const NAMES = ['toi', 'ton partenaire', 'adversaire gauche', 'adversaire droit'];
-const PLAYER_COLORS = ['#ff6b4a', '#ffb199', '#4ad0ff', '#2a8fc0'];
+const PLAYER_COLORS = ['#ff6b4a', '#ff9d7a', '#4ad0ff', '#2f9fd6'];
+const SWING_SECONDS = 0.34;
+
+/** État d'animation d'un joueur : purement visuel, déduit de la simulation, jamais l'inverse. */
+interface Anim {
+  lastX: number;
+  lastY: number;
+  moveX: number;
+  moveY: number;
+  speed: number;
+  runPhase: number;
+  swingTick: number;
+}
+const anims: Anim[] = [0, 1, 2, 3].map(() => ({ lastX: 0, lastY: 0, moveX: 0, moveY: 1, speed: 0, runPhase: 0, swingTick: -1e9 }));
+const sandboxAnim = { swingTick: -1e9 };
+
+/** L'IA frappe à un instant connu d'avance : son geste part juste avant, pour arriver au contact à l'heure. */
+function preSwing(pl: Match['players'][number]): number | null {
+  if (pl.isHuman || !pl.target || game.assigned[pl.team] !== pl.id) return null;
+  const ticksLeft = pl.target.tick - game.tick;
+  if (ticksLeft < 0 || ticksLeft > CONTACT_TICKS) return null;
+  return CONTACT_AT * (1 - ticksLeft / CONTACT_TICKS);
+}
+
+function resetAnims(): void {
+  game.players.forEach((pl, i) => Object.assign(anims[i], { lastX: pl.pos.x, lastY: pl.pos.y, speed: 0, swingTick: -1e9 }));
+}
+
+function updateAnims(): void {
+  const dtPhys = FIXED_DT * tuning.physics.timeScale;
+  game.players.forEach((pl, i) => {
+    const an = anims[i];
+    const dx = pl.pos.x - an.lastX;
+    const dy = pl.pos.y - an.lastY;
+    const d = Math.hypot(dx, dy);
+    an.lastX = pl.pos.x;
+    an.lastY = pl.pos.y;
+    // Un saut de plus de 50 cm en un tick est une remise en place (service), pas une course.
+    if (d < 1e-5 || d > 0.5) {
+      an.speed *= 0.8;
+      return;
+    }
+    an.moveX = dx / d;
+    an.moveY = dy / d;
+    an.speed = d / dtPhys;
+    an.runPhase += d * 4.5;
+  });
+}
+
+/** Part du geste avant le contact avec la balle (voir les poses dans render/player.ts). */
+const CONTACT_AT = 0.35;
+const CONTACT_TICKS = (CONTACT_AT * SWING_SECONDS) / FIXED_DT;
+
+function swingProgress(startTick: number, tick: number, alpha: number): number | null {
+  const s = ((tick + alpha - startTick) * FIXED_DT) / SWING_SECONDS;
+  return s >= 0 && s <= 1 ? s : null;
+}
 
 function sceneInput(alpha: number, slow: boolean): SceneInput {
   const common = { alpha, tuning, court, debug, preview, fps, trail };
@@ -431,17 +495,52 @@ function sceneInput(alpha: number, slow: boolean): SceneInput {
       prevPos: sandbox.prevPos,
       lastContact: sandbox.lastContact,
       tick: sandbox.tick,
-      players: [{ x: sandboxPlayerX, y: tuning.shot.playerDepth - 0.35, color: PLAYER_COLORS[0], hittable: false, target: null }],
+      players: [
+        {
+          x: sandboxPlayerX,
+          y: tuning.shot.playerDepth - 0.35,
+          facing: 1,
+          shirt: PLAYER_COLORS[0],
+          moveX: 0,
+          moveY: 1,
+          speed: 0,
+          runPhase: 0,
+          swing: swingProgress(sandboxAnim.swingTick, sandbox.tick, alpha),
+          prep: 0,
+          idlePhase: sandbox.tick * 0.03,
+          scale: tuning.view.playerScale,
+          marker: false,
+          hittable: false,
+          target: null,
+        },
+      ],
       debugLines: [],
     };
   }
-  const players: ScenePlayer[] = game.players.map((pl) => ({
-    x: pl.pos.x,
-    y: pl.pos.y,
-    color: PLAYER_COLORS[pl.id],
-    hittable: pl.isHuman && isHittable(game, pl, tuning, court),
-    target: pl.target?.pos ?? null,
-  }));
+  const players: ScenePlayer[] = game.players.map((pl) => {
+    const an = anims[pl.id];
+    // Armé : le bras part en arrière dans la dernière demi-seconde avant la frappe, ou avant de servir.
+    let prep = 0;
+    if (pl.target) prep = clamp(1 - ((pl.target.tick - game.tick) * FIXED_DT - 0.1) / 0.5, 0, 1);
+    else if (game.phase === 'serve' && game.serverId === pl.id) prep = pl.isHuman ? 0.7 : clamp(game.phaseTicks / 110, 0, 1);
+    return {
+      x: pl.pos.x,
+      y: pl.pos.y,
+      facing: pl.team === 0 ? 1 : -1,
+      shirt: PLAYER_COLORS[pl.id],
+      moveX: an.moveX,
+      moveY: an.moveY,
+      speed: an.speed,
+      runPhase: an.runPhase,
+      swing: swingProgress(an.swingTick, game.tick, alpha) ?? preSwing(pl),
+      prep,
+      idlePhase: game.tick * 0.03 + pl.id * 1.7,
+      scale: tuning.view.playerScale,
+      marker: pl.isHuman,
+      hittable: pl.isHuman && isHittable(game, pl, tuning, court),
+      target: pl.target?.pos ?? null,
+    };
+  });
   const human = game.players[HUMAN_ID];
   const assigned = game.assigned.map((id) => (id === null ? '—' : NAMES[id])).join(' / ');
   return {

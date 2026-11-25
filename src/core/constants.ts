@@ -170,6 +170,8 @@ export interface ViewParams {
   /** Décalage de l'ombre par mètre de hauteur (lumière oblique). */
   shadowOffsetX: number;
   shadowOffsetY: number;
+  /** Grossissement des joueurs à l'écran (1 = taille réelle). Purement visuel. */
+  playerScale: number;
 }
 
 export const DEFAULT_VIEW: ViewParams = {
@@ -179,6 +181,7 @@ export const DEFAULT_VIEW: ViewParams = {
   heightSizeGain: 0.12,
   shadowOffsetX: 0.15,
   shadowOffsetY: 0.1,
+  playerScale: 1.25,
 };
 
 export interface PlayParams {

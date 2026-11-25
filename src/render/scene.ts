@@ -7,6 +7,7 @@ import type { ShotIntent } from '../core/shot/swipeToShot';
 import { drawNearGlass } from './courtLayer';
 import { groundCircle, line3 } from './draw';
 import type { Fx } from './fx';
+import { drawPlayer, type PlayerPose } from './player';
 import type { Projection, ScreenPoint } from './projection';
 
 export interface ShotPreview {
@@ -15,10 +16,7 @@ export interface ShotPreview {
   vel: Vec3;
 }
 
-export interface ScenePlayer {
-  x: number;
-  y: number;
-  color: string;
+export interface ScenePlayer extends PlayerPose {
   /** Anneau au sol : la balle est frappable maintenant. */
   hittable: boolean;
   /** Point de frappe prévu (affiché en debug). */
@@ -47,7 +45,6 @@ export interface SceneInput {
 }
 
 const tmp: ScreenPoint = { x: 0, y: 0 };
-const tmp2: ScreenPoint = { x: 0, y: 0 };
 const drawPos: Vec3 = { x: 0, y: 0, z: 0 };
 
 export function drawScene(
@@ -87,7 +84,7 @@ export function drawScene(
   // Ordre de dessin : du fond vers l'avant, le filet entre les deux camps.
   const items: { y: number; draw: () => void }[] = s.players.map((pl) => ({
     y: pl.y,
-    draw: () => drawPlayer(ctx, proj, pl.x, pl.y, pl.color),
+    draw: () => drawPlayer(ctx, proj, pl),
   }));
   if (ball) items.push({ y: drawPos.y, draw: () => drawBall(ctx, proj, view, drawPos, s.glow) });
   items.sort((a, b) => b.y - a.y);
@@ -192,35 +189,6 @@ function drawTargetMark(ctx: CanvasRenderingContext2D, proj: Projection, p: Vec3
   ctx.beginPath();
   ctx.arc(tmp.x, tmp.y, 7, 0, Math.PI * 2);
   ctx.stroke();
-}
-
-/** Joueur provisoire : silhouette simple, juste pour situer le point de frappe. */
-function drawPlayer(ctx: CanvasRenderingContext2D, proj: Projection, x: number, y: number, color: string): void {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-  groundCircle(ctx, proj, x, y, 0.35);
-  ctx.fill();
-  const k = proj.pxPerMeter(y);
-  proj.toScreen(x, y, 0.15, tmp);
-  proj.toScreen(x, y, 1.45, tmp2);
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 0.42 * k;
-  ctx.beginPath();
-  ctx.moveTo(tmp.x, tmp.y);
-  ctx.lineTo(tmp2.x, tmp2.y);
-  ctx.stroke();
-  proj.toScreen(x, y, 1.72, tmp);
-  ctx.beginPath();
-  ctx.arc(tmp.x, tmp.y, 0.14 * k, 0, Math.PI * 2);
-  ctx.fillStyle = '#ffd2b8';
-  ctx.fill();
-  // Pala.
-  proj.toScreen(x + 0.45, y, 1.0, tmp);
-  ctx.beginPath();
-  ctx.ellipse(tmp.x, tmp.y, 0.13 * k, 0.17 * k, 0, 0, Math.PI * 2);
-  ctx.fillStyle = '#20252c';
-  ctx.fill();
-  ctx.lineCap = 'butt';
 }
 
 function drawPrediction(ctx: CanvasRenderingContext2D, proj: Projection, pred: Prediction, color: string): void {
