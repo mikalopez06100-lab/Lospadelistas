@@ -50,7 +50,8 @@ pas pour tester l'installation : pour ça, utilise l'adresse Vercel.
 - **Moitié gauche de l'écran = ton joueur de gauche, moitié droite = ton joueur de droite.**
 - **Glisser le pouce** : un stick apparaît là où tu poses le doigt, le joueur se déplace dans
   cette direction (vers le haut de l'écran = vers le filet).
-- **Coup de pouce sec** (geste de moins de 0,3 s) : le joueur frappe.
+- **Coup de pouce sec** (geste de moins de 0,4 s) : le joueur frappe. Tant que le pouce file,
+  le joueur ne bouge pas : il ne se déplace que quand le pouce se pose.
   - vers le haut, rapide : **coup tendu** ;
   - vers le haut, en douceur : **lob** ;
   - vers le bas : **smash** si la balle est haute (au moins 1,6 m), **amortie** sinon.
@@ -64,7 +65,7 @@ pas pour tester l'installation : pour ça, utilise l'adresse Vercel.
 - **Les adversaires jouent la même logique** : ils montent au filet après un lob ou quand tu
   restes au fond, reculent quand tu les lobes, et smashent les balles hautes près du filet. Un
   smash qui rebondit et sort par-dessus la vitre de fond donne le point (« sortie après rebond »).
-- Service : coup de pouce vers le haut du côté du joueur qui sert (indiqué à l'écran).
+- Service : un swipe vers le haut, n'importe où sur l'écran et sans contrainte de vitesse.
 
 ### Mode Classique : match en double à un pouce
 

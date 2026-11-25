@@ -120,14 +120,23 @@ function pushInput(input: MatchInput): void {
 // Mode Duo : un pouce par joueur, sur tout l'écran.
 const duo = attachDuo(canvas, {
   enabled: isDuoPlaying,
-  flickMaxMs: 300,
-  stickDelayMs: 110,
+  flickMaxMs: 400,
+  stickDelayMs: 90,
   radiusPx: 56,
   onStick: (playerId, stick) => {
     if (isDuoPlaying()) pushInput({ tick: game.tick, playerId, stick });
   },
-  onFlick: (playerId, swipe) => {
+  onRelease: (playerId, swipe, quick) => {
     if (!isDuoPlaying()) return;
+    // Au service, on est indulgent : n'importe quel geste vers le haut sert, quelle que soit
+    // sa durée et quel que soit le côté de l'écran. Rien d'autre ne peut se passer à ce moment-là.
+    if (game.phase === 'serve' && game.servingTeam === 0) {
+      const serveIntent = analyzeSwipe(swipe, { ...tuning.shot, lobMode: 'speed' });
+      if (serveIntent) pushInput({ tick: game.tick, playerId: game.serverId, intent: serveIntent });
+      else showFeedback('Swipe vers le haut pour servir', 'info', 900);
+      return;
+    }
+    if (!quick) return;
     const intent = analyzeSwipe(swipe, { ...tuning.shot, lobMode: 'speed' }, true);
     if (intent) pushInput({ tick: game.tick, playerId, intent });
   },
@@ -226,7 +235,7 @@ function refreshHint(): void {
     const second = game.serveNumber === 2 ? ' (2e balle)' : '';
     if (game.mode === 'duo') {
       if (game.phase === 'serve' && game.servingTeam === 0)
-        text = `Service${second} : coup de pouce vers le haut, côté ${game.serverId === HUMAN_ID ? 'droit' : 'gauche'} de l’écran`;
+        text = `À toi de servir${second} : swipe vers le haut, n’importe où`;
       else if (firstPoint) text = 'Glisse = déplacer · coup sec ↑ = tendu · ↑ doux = lob · ↓ = smash';
     } else if (game.phase === 'serve' && game.serverId === HUMAN_ID) text = `À toi de servir${second} : swipe vers le haut`;
     else if (firstPoint) text = 'Quand l’anneau vert s’allume sous toi, swipe vers le haut';

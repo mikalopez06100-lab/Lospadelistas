@@ -12,12 +12,16 @@ export interface DuoOptions {
   enabled: () => boolean;
   /** Au-delà de cette durée (ms), le geste est un déplacement, plus une frappe. */
   flickMaxMs: number;
-  /** Le stick ne s'active qu'après ce délai (ms), pour qu'une frappe ne fasse pas bouger le joueur. */
+  /**
+   * Le stick ne s'active que quand le pouce s'est posé depuis ce délai (ms) ET qu'il s'est
+   * stabilisé : tant que le doigt file (frappe en cours), le joueur ne bouge pas.
+   */
   stickDelayMs: number;
   /** Course du stick en px : au-delà, vitesse maximale. */
   radiusPx: number;
   onStick: (playerId: number, stick: Vec2 | null) => void;
-  onFlick: (playerId: number, swipe: Swipe) => void;
+  /** Doigt relevé. `quick` = geste assez bref pour être une frappe. */
+  onRelease: (playerId: number, swipe: Swipe, quick: boolean) => void;
 }
 
 export interface DuoTouch {
@@ -33,7 +37,13 @@ interface Tracked extends DuoTouch {
   t0: number;
   points: SwipeSample[];
   lastKey: string;
+  /** Dernier mouvement du doigt et sa vitesse lissée (px/s), pour savoir s'il s'est stabilisé. */
+  lastMoveT: number;
+  speed: number;
 }
+
+/** Sous cette vitesse (px/s), le pouce est considéré comme posé : c'est un déplacement, pas une frappe. */
+const SETTLED_SPEED = 140;
 
 export function attachDuo(el: HTMLElement, o: DuoOptions): { touches: () => readonly DuoTouch[] } {
   const tracked = new Map<number, Tracked>();
@@ -42,14 +52,19 @@ export function attachDuo(el: HTMLElement, o: DuoOptions): { touches: () => read
     list.length = 0;
     for (const t of tracked.values()) list.push(t);
   };
+  // performance.now() partout : l'horodatage des événements n'a pas la même origine sur tous les navigateurs.
   const local = (e: PointerEvent): SwipeSample => {
     const rect = el.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top, t: e.timeStamp };
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top, t: performance.now() };
   };
 
   const updateStick = (t: Tracked, now: number) => {
-    if (!t.stickActive && now - t.t0 < o.stickDelayMs) return;
-    t.stickActive = true;
+    if (!t.stickActive) {
+      const held = now - t.t0;
+      const settled = now - t.lastMoveT > 60 || t.speed < SETTLED_SPEED;
+      if (held < o.flickMaxMs && (held < o.stickDelayMs || !settled)) return;
+      t.stickActive = true;
+    }
     let sx = (t.x - t.x0) / o.radiusPx;
     let sy = -(t.y - t.y0) / o.radiusPx; // haut de l'écran = vers le filet adverse
     const n = Math.hypot(sx, sy);
@@ -73,7 +88,7 @@ export function attachDuo(el: HTMLElement, o: DuoOptions): { touches: () => read
     // Un seul doigt par moitié d'écran : moitié gauche = joueur de gauche (1), droite = joueur de droite (0).
     const playerId = s.x < el.clientWidth / 2 ? 1 : 0;
     for (const t of tracked.values()) if (t.playerId === playerId) return;
-    tracked.set(e.pointerId, { playerId, x0: s.x, y0: s.y, x: s.x, y: s.y, stickActive: false, t0: s.t, points: [s], lastKey: '' });
+    tracked.set(e.pointerId, { playerId, x0: s.x, y0: s.y, x: s.x, y: s.y, stickActive: false, t0: s.t, points: [s], lastKey: '', lastMoveT: s.t, speed: 0 });
     sync();
     el.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -83,6 +98,10 @@ export function attachDuo(el: HTMLElement, o: DuoOptions): { touches: () => read
     const t = tracked.get(e.pointerId);
     if (!t) return;
     const s = local(e);
+    const dtMs = Math.max(1, s.t - t.lastMoveT);
+    const v = (Math.hypot(s.x - t.x, s.y - t.y) / dtMs) * 1000;
+    t.speed += (v - t.speed) * 0.5;
+    t.lastMoveT = s.t;
     t.x = s.x;
     t.y = s.y;
     if (t.points.length < 64) t.points.push(s);
@@ -98,7 +117,7 @@ export function attachDuo(el: HTMLElement, o: DuoOptions): { touches: () => read
     const s = local(e);
     t.points.push(s);
     if (t.lastKey !== '') o.onStick(t.playerId, null);
-    if (!cancelled && s.t - t.t0 <= o.flickMaxMs) o.onFlick(t.playerId, { points: t.points, viewportHeight: el.clientHeight });
+    if (!cancelled) o.onRelease(t.playerId, { points: t.points, viewportHeight: el.clientHeight }, s.t - t.t0 <= o.flickMaxMs);
   };
   el.addEventListener('pointerup', (e) => end(e, false));
   el.addEventListener('pointercancel', (e) => end(e, true));
