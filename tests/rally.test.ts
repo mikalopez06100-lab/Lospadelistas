@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COURT, DEFAULT_PHYSICS } from '../src/core/constants';
 import { createBall, stepBall, type BallState, type ContactEvent, type Surface } from '../src/core/physics/step';
-import { canHit, createRally, onBallStatus, onContact, onHit, type RallyState } from '../src/core/rules/rally';
+import { canHit, createRally, onBallStatus, onContact, onHit, startServe, type RallyState } from '../src/core/rules/rally';
 
 function ev(surface: Surface, y: number): ContactEvent {
   return { surface, plane: surface === 'ground' ? 'ground' : 'backFar', pos: { x: 5, y, z: 0 }, normalSpeed: 5, t: 0 };
@@ -86,5 +86,78 @@ describe('règles de l’échange', () => {
       onBallStatus(r, ball);
     }
     expect(r.result?.reason).toBe('vitre-directe');
+  });
+});
+
+describe('service', () => {
+  // Service du camp 0 vers le carré de droite du camp 1 (vu depuis le camp 1 : x < 5).
+  const box = { xMin: 0, xMax: 5, yMin: 10, yMax: 16.95 };
+  const at = (surface: Surface, x: number, y: number): ContactEvent => ({
+    surface,
+    plane: surface === 'ground' ? 'ground' : surface === 'net' ? 'net' : 'backFar',
+    pos: { x, y, z: 0 },
+    normalSpeed: 5,
+    t: 0,
+  });
+  const served = () => {
+    const r = createRally();
+    startServe(r, 0, box, 2);
+    return r;
+  };
+
+  it('rebond dans le carré en diagonale : bon', () => {
+    const r = served();
+    onContact(r, at('ground', 3, 14), COURT);
+    expect(r.result).toBeNull();
+  });
+
+  it('rebond hors du carré : faute de service', () => {
+    const wrongSide = served();
+    onContact(wrongSide, at('ground', 7, 14), COURT);
+    expect(wrongSide.result).toEqual({ winner: 1, reason: 'faute-service' });
+    const tooLong = served();
+    onContact(tooLong, at('ground', 3, 18), COURT);
+    expect(tooLong.result?.reason).toBe('faute-service');
+  });
+
+  it('filet puis carré : let ; filet puis hors carré : faute', () => {
+    const a = served();
+    onContact(a, { ...at('net', 3, 10.03), plane: 'net' }, COURT);
+    onContact(a, at('ground', 3, 12), COURT);
+    expect(a.result?.reason).toBe('let');
+    const b = served();
+    onContact(b, at('net', 3, 9.97), COURT);
+    onContact(b, at('ground', 3, 9), COURT);
+    expect(b.result?.reason).toBe('faute-service');
+  });
+
+  it('après le rebond : vitre permise, grillage interdit', () => {
+    const glass = served();
+    onContact(glass, at('ground', 3, 15), COURT);
+    onContact(glass, at('glass', 0, 18), COURT);
+    expect(glass.result).toBeNull();
+    const fence = served();
+    onContact(fence, at('ground', 3, 15), COURT);
+    onContact(fence, { ...at('fence', 0, 13), plane: 'left' }, COURT);
+    expect(fence.result).toEqual({ winner: 1, reason: 'faute-service' });
+  });
+
+  it('seul le receveur peut jouer le service, et pas de volée au retour', () => {
+    const r = served();
+    expect(canHit(r, 1, 14, COURT, 2)).toBe(false);
+    onContact(r, at('ground', 3, 14), COURT);
+    expect(canHit(r, 1, 15, COURT, 2)).toBe(true);
+    expect(canHit(r, 1, 15, COURT, 3)).toBe(false);
+    onHit(r, 1);
+    expect(r.serve).toBeNull();
+    expect(canHit(r, 0, 5, COURT, 0)).toBe(true);
+    expect(canHit(r, 0, 5, COURT, 1)).toBe(true);
+  });
+
+  it('service non repris : double rebond, point pour le serveur', () => {
+    const r = served();
+    onContact(r, at('ground', 3, 14), COURT);
+    onContact(r, at('ground', 3, 17), COURT);
+    expect(r.result).toEqual({ winner: 0, reason: 'double-rebond' });
   });
 });

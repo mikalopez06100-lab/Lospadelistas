@@ -117,6 +117,10 @@ export interface ShotParams {
   lobMinSpeed: number;
   lobMaxSpeed: number;
   lobElevationDeg: number;
+  /** Volée amortie (IA) : vitesses et angle minimum. */
+  dropMinSpeed: number;
+  dropMaxSpeed: number;
+  dropElevationDeg: number;
   /** Mode 'hook' : courbure (écart max à la corde / longueur) au-delà de laquelle c'est un lob. */
   hookCurvature: number;
   /** Angle latéral maximum du coup. */
@@ -144,6 +148,9 @@ export const DEFAULT_SHOT: ShotParams = {
   lobMinSpeed: 11,
   lobMaxSpeed: 14.5,
   lobElevationDeg: 40,
+  dropMinSpeed: 5,
+  dropMaxSpeed: 11,
+  dropElevationDeg: 12,
   hookCurvature: 0.12,
   maxAimDeg: 50,
   aimGain: 1.3,
@@ -223,21 +230,50 @@ export interface AiParams {
   errorChance: number;
   /** Probabilité de viser le côté opposé au joueur (le « terrain ouvert »). */
   openCourtBias: number;
+  /** Position d'attente : distance depuis la vitre de fond (m). Plus grand = plus près du filet, plus de volées. */
+  homeDepth: number;
+  /** Réticence à jouer de volée (même échelle que play.volleyPenalty). */
+  volleyPenalty: number;
+  /** Écart type de l'erreur de service (m) : au-delà du carré, c'est la faute. */
+  serveError: number;
+  /** Au filet : probabilité de jouer une volée amortie courte et croisée (le coup qui conclut). */
+  attackChance: number;
 }
 
 export const AI_LEVELS: Record<AiLevel, AiParams> = {
-  facile: { reaction: 0.35, moveSpeed: 4.5, aimError: 1.4, lobChance: 0.1, minDepth: 4, maxDepth: 7.5, errorChance: 0.1, openCourtBias: 0.25 },
-  moyen: { reaction: 0.25, moveSpeed: 5.5, aimError: 0.9, lobChance: 0.15, minDepth: 5, maxDepth: 8.5, errorChance: 0.06, openCourtBias: 0.5 },
-  fort: { reaction: 0.15, moveSpeed: 6.5, aimError: 0.5, lobChance: 0.2, minDepth: 6, maxDepth: 9.3, errorChance: 0.03, openCourtBias: 0.75 },
+  facile: { reaction: 0.35, moveSpeed: 3.6, aimError: 1.4, lobChance: 0.1, minDepth: 4, maxDepth: 7.5, errorChance: 0.12, openCourtBias: 0.25, homeDepth: 3, volleyPenalty: 0.8, serveError: 0.9, attackChance: 0.15 },
+  moyen: { reaction: 0.25, moveSpeed: 4.2, aimError: 0.9, lobChance: 0.15, minDepth: 5, maxDepth: 8.5, errorChance: 0.08, openCourtBias: 0.5, homeDepth: 4, volleyPenalty: 0.5, serveError: 0.6, attackChance: 0.35 },
+  fort: { reaction: 0.15, moveSpeed: 4.8, aimError: 0.5, lobChance: 0.2, minDepth: 6, maxDepth: 9.3, errorChance: 0.05, openCourtBias: 0.75, homeDepth: 5.5, volleyPenalty: 0.2, serveError: 0.45, attackChance: 0.55 },
 };
+
+/** Niveau de l'IA partenaire (fixe : un partenaire correct, ni boulet ni sauveur). */
+export const PARTNER_LEVEL: AiLevel = 'moyen';
+
+export interface MatchParams {
+  /** Match en N jeux gagnants (point en or à 40-40, pas de sets). */
+  gamesToWin: number;
+}
+
+/**
+ * 1 jeu par défaut : avec des échanges réalistes, un match en 3 jeux dure 8 à 12 minutes
+ * (mesuré avec npm run sim), loin des sessions de 2 à 3 minutes visées. Réglable dans ⚙.
+ */
+export const DEFAULT_MATCH: MatchParams = { gamesToWin: 1 };
 
 export interface Tuning {
   physics: PhysicsParams;
   shot: ShotParams;
   view: ViewParams;
   play: PlayParams;
+  match: MatchParams;
 }
 
 export function createDefaultTuning(): Tuning {
-  return structuredClone({ physics: DEFAULT_PHYSICS, shot: DEFAULT_SHOT, view: DEFAULT_VIEW, play: DEFAULT_PLAY });
+  return structuredClone({
+    physics: DEFAULT_PHYSICS,
+    shot: DEFAULT_SHOT,
+    view: DEFAULT_VIEW,
+    play: DEFAULT_PLAY,
+    match: DEFAULT_MATCH,
+  });
 }

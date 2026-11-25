@@ -53,6 +53,7 @@ const SECTIONS: { title: string; sliders: Slider[] }[] = [
       { path: 'play.maxTimingPowerError', label: 'Erreur de puissance max', min: 0, max: 0.6, step: 0.01 },
       { path: 'play.idealContactZ', label: 'Hauteur de frappe idéale (m)', min: 0.4, max: 1.8, step: 0.05 },
       { path: 'play.volleyPenalty', label: 'Réticence à la volée', min: 0, max: 2, step: 0.05 },
+      { path: 'match.gamesToWin', label: 'Jeux gagnants pour le match', min: 1, max: 5, step: 1 },
     ],
   },
   {
@@ -148,6 +149,7 @@ export function mountTuningPanel(root: HTMLElement, tuning: Tuning, onChange: (p
         Object.assign(tuning.shot, d.shot);
         Object.assign(tuning.view, d.view);
         Object.assign(tuning.play, d.play);
+        Object.assign(tuning.match, d.match);
         saveTuning(tuning);
         onChange('*');
         build();

@@ -1,31 +1,31 @@
 import type { AiLevel, CourtGeometry, Tuning } from '../constants';
-import { createGame, tickGame, type Game, type GameEvent, type GameInput } from './game';
+import { createMatch, tickMatch, type Match, type MatchEvent, type MatchInput } from './match';
 
 /**
- * Enregistrement d'une partie : graine + réglages + entrées horodatées en ticks.
+ * Enregistrement d'un match : graine + réglages + entrées horodatées en ticks.
  * Rejouer = refaire tourner la simulation avec les mêmes entrées. Les entrées sont des
  * intentions de coup (direction, puissance, type), pas des pixels : le fantôme ne dépend
  * donc pas de l'écran de celui qui a joué.
  */
 export interface Recording {
-  version: 1;
+  version: 2;
   seed: number;
   aiLevel: AiLevel;
   tuning: Tuning;
-  inputs: GameInput[];
+  inputs: MatchInput[];
   ticks: number;
 }
 
-export function replay(rec: Recording, court: CourtGeometry, onEvent?: (e: GameEvent, g: Game) => void): Game {
-  const g = createGame(rec.seed, rec.aiLevel, court);
-  const events: GameEvent[] = [];
+export function replay(rec: Recording, court: CourtGeometry, onEvent?: (e: MatchEvent, m: Match) => void): Match {
+  const m = createMatch(rec.seed, rec.aiLevel, court, rec.tuning.match.gamesToWin);
+  const events: MatchEvent[] = [];
   let next = 0;
-  while (g.tick < rec.ticks) {
+  while (m.tick < rec.ticks) {
     const start = next;
-    while (next < rec.inputs.length && rec.inputs[next].tick === g.tick) next++;
+    while (next < rec.inputs.length && rec.inputs[next].tick === m.tick) next++;
     events.length = 0;
-    tickGame(g, rec.inputs.slice(start, next), rec.tuning, court, events);
-    if (onEvent) for (const e of events) onEvent(e, g);
+    tickMatch(m, rec.inputs.slice(start, next), rec.tuning, court, events);
+    if (onEvent) for (const e of events) onEvent(e, m);
   }
-  return g;
+  return m;
 }

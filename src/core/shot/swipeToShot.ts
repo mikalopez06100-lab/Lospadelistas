@@ -16,7 +16,8 @@ export interface Swipe {
   viewportHeight: number;
 }
 
-export type ShotKind = 'drive' | 'lob';
+/** 'drop' = volée amortie : courte et lente, jouée par l'IA au filet (pas encore au swipe). */
+export type ShotKind = 'drive' | 'lob' | 'drop';
 
 export interface ShotIntent {
   kind: ShotKind;
@@ -106,6 +107,9 @@ export function shotVelocity(
   if (intent.kind === 'lob') {
     speed = lerp(s.lobMinSpeed, s.lobMaxSpeed, intent.power);
     elev = s.lobElevationDeg * DEG;
+  } else if (intent.kind === 'drop') {
+    speed = lerp(s.dropMinSpeed, s.dropMaxSpeed, intent.power);
+    elev = Math.max(s.dropElevationDeg * DEG, solveDriveElevation(origin, speed, intent.aim, s, p, court));
   } else {
     speed = lerp(s.driveMinSpeed, s.driveMaxSpeed, intent.power);
     elev = solveDriveElevation(origin, speed, intent.aim, s, p, court);

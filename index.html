@@ -13,7 +13,7 @@
   <body>
     <canvas id="game"></canvas>
     <div id="hud">
-      <button id="btn-mode" type="button">Échange</button>
+      <button id="btn-mode" type="button">Match</button>
       <button id="btn-level" type="button">IA</button>
       <button id="btn-replay" type="button" title="Relancer le dernier coup">↺</button>
       <button id="btn-lob" type="button">Lob</button>
@@ -23,6 +23,10 @@
     <div id="score"></div>
     <div id="feedback"></div>
     <div id="hint"></div>
+    <div id="over" class="hidden">
+      <p id="over-text"></p>
+      <button id="btn-again" type="button">Rejouer</button>
+    </div>
     <div id="panel" class="hidden"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

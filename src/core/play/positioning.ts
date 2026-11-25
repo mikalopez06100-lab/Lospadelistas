@@ -21,6 +21,7 @@ export function findWindows(
   ball: BallState,
   rally: RallyState,
   side: Side,
+  playerId: number,
   p: PhysicsParams,
   play: PlayParams,
   court: CourtGeometry,
@@ -45,7 +46,7 @@ export function findWindows(
     if (r.result) break;
     // Un échantillon tous les 2 pas suffit (≈ 1 cm à 1 m/s près de la frappe) et divise le coût.
     if (i % 2 !== 0) continue;
-    if (!canHit(r, side, b.pos.y, court)) continue;
+    if (!canHit(r, side, b.pos.y, court, playerId)) continue;
     if (b.pos.z < play.minContactZ || b.pos.z > play.maxContactZ) continue;
     out.push({
       steps: i,
@@ -54,6 +55,14 @@ export function findWindows(
     });
   }
   return out;
+}
+
+export interface WindowChoice {
+  window: ContactWindow;
+  /** false = aucun instant atteignable à temps : c'est le « moins pire ». */
+  reachable: boolean;
+  /** Marge de temps (s) : positive = en avance, négative = en retard. */
+  slack: number;
 }
 
 /**
@@ -67,9 +76,11 @@ export function chooseWindow(
   moveSpeed: number,
   dt: number,
   play: PlayParams,
-): ContactWindow | null {
+  volleyPenalty = play.volleyPenalty,
+): WindowChoice | null {
   let best: ContactWindow | null = null;
   let bestCost = Infinity;
+  let bestSlack = 0;
   let fallback: ContactWindow | null = null;
   let fallbackLate = Infinity;
   for (const w of windows) {
@@ -83,12 +94,13 @@ export function chooseWindow(
       }
       continue;
     }
-    const cost =
-      Math.abs(w.pos.z - play.idealContactZ) + (w.kind === 'volley' ? play.volleyPenalty : 0) + 0.05 * available;
+    const cost = Math.abs(w.pos.z - play.idealContactZ) + (w.kind === 'volley' ? volleyPenalty : 0) + 0.05 * available;
     if (cost < bestCost) {
       bestCost = cost;
       best = w;
+      bestSlack = -late;
     }
   }
-  return best ?? fallback;
+  if (best) return { window: best, reachable: true, slack: bestSlack };
+  return fallback ? { window: fallback, reachable: false, slack: -fallbackLate } : null;
 }
