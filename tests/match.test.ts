@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Bot, playBotMatch } from '../scripts/bot';
-import { COURT, FIXED_DT, STYLE, createDefaultTuning } from '../src/core/constants';
+import { COURT, DEMO_SEED, FIXED_DT, STYLE, createDefaultTuning } from '../src/core/constants';
 import { createMatch, humanServeShot, receiverFor, serviceBox, tickMatch, type MatchEvent } from '../src/core/play/match';
 import { predict } from '../src/core/physics/predict';
 import { createBall } from '../src/core/physics/step';
@@ -238,5 +238,37 @@ describe('match en double', () => {
     tickMatch(m, [{ tick: m.tick, playerId: 1, stick: { x: 1, y: 0 } }], tuning, COURT, events);
     expect(lola.stick).toBeNull();
     expect(Math.abs(lola.pos.x - lolaBefore.x)).toBeLessThan(0.2);
+  });
+
+  it('mode démo : quatre IA, et la graine choisie donne bien un échange spectaculaire', () => {
+    const t = createDefaultTuning();
+    const m = createMatch(DEMO_SEED, 'fort', COURT, 3, 'demo');
+    expect(m.players.every((p) => !p.isHuman)).toBe(true);
+    const events: MatchEvent[] = [];
+    let glass = 0;
+    const kinds: string[] = [];
+    let lastTeam = -1;
+    let point: Extract<MatchEvent, { type: 'point' }> | undefined;
+    while (m.tick < 120 * 30 && !point) {
+      events.length = 0;
+      tickMatch(m, [], t, COURT, events);
+      for (const e of events) {
+        if (e.type === 'contact' && e.contact.surface === 'glass') glass++;
+        if (e.type === 'hit') {
+          kinds.push(e.kind);
+          lastTeam = e.team;
+        }
+        if (e.type === 'point') point = e;
+      }
+    }
+    // Si ce test casse après un réglage de l'IA ou de la physique : relancer la recherche de
+    // graine (scripts/demo-seed.test.ts) et mettre à jour DEMO_SEED.
+    expect(point?.result.winner).toBe(0);
+    expect(kinds[kinds.length - 1]).toBe('smash');
+    expect(lastTeam).toBe(0);
+    expect(kinds).toContain('lob');
+    expect(glass).toBeGreaterThanOrEqual(3);
+    expect(m.tick / 120).toBeGreaterThan(12);
+    expect(m.tick / 120).toBeLessThan(21);
   });
 });

@@ -409,3 +409,34 @@ button.primary {
     display: flex;
   }
 }
+
+/* ——— Mode démo (?demo=1) : menu resserré pour tenir en entier à l'écran, sans options ——— */
+
+body.demo #home .options,
+body.demo #howto,
+body.demo .copyright,
+body.demo #best,
+body.demo #btn-resume,
+body.demo #btn-install,
+body.demo #install-hint {
+  display: none !important;
+}
+
+body.demo #home .group {
+  margin: 12px 0;
+}
+
+body.demo .options-list button {
+  min-height: 32px;
+  padding: 4px 8px;
+}
+
+body.demo .pair {
+  margin-top: 16px;
+}
+
+/* Bouton « enfoncé » : il descend sur son ombre. */
+button.pressed {
+  transform: translate(4px, 4px);
+  box-shadow: none !important;
+}

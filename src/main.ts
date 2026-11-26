@@ -1,8 +1,8 @@
 import '@fontsource/press-start-2p/latin-400.css';
 import './style.css';
 import { mountTuningPanel, loadTuning, saveTuning } from './app/tuningPanel';
-import { canVibrate, Sfx, vibrate } from './audio/sfx';
-import { COURT, FIXED_DT, STYLE, type AiLevel } from './core/constants';
+import { canVibrate, renderJournal, Sfx, vibrate } from './audio/sfx';
+import { COURT, DEMO_SEED, FIXED_DT, STYLE, createDefaultTuning, type AiLevel } from './core/constants';
 import { clamp, type Vec3 } from './core/math/vec3';
 import { predict } from './core/physics/predict';
 import type { ContactEvent } from './core/physics/step';
@@ -43,7 +43,17 @@ const PAIRS: Record<AiLevel, { team: string; names: string; sprites: [SpriteName
 const SPRITE_INDEX: SpriteName[] = ['lola', 'nico', 'gunther', 'brigitte', 'paco', 'pepa', 'toro', 'reina'];
 
 const court = COURT;
-const tuning = loadTuning();
+/**
+ * Mode démo (?demo=1) : personne ne joue. L'affiche, puis le menu qui se règle tout seul, puis un
+ * échange entre quatre IA. Avec &capture=1, rien n'est joué en direct : les sons sont consignés
+ * pour être rendus hors ligne par scripts/record-demo.mjs, qui fabrique la vidéo image par image.
+ */
+const QUERY = new URLSearchParams(location.search);
+const DEMO = QUERY.get('demo') === '1';
+const CAPTURE = DEMO && QUERY.get('capture') === '1';
+
+// La démo ignore les réglages enregistrés sur l'appareil : elle doit se dérouler partout pareil.
+const tuning = DEMO ? createDefaultTuning() : loadTuning();
 // Le match se joue toujours en 1 jeu (un ancien réglage enregistré pouvait dire autre chose).
 tuning.match.gamesToWin = 1;
 const sandbox = createSandbox();
@@ -75,9 +85,11 @@ let freezeUntil = 0;
 let shakeUntil = 0;
 
 function newGame(): void {
-  const seed = (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0;
-  game = createMatch(seed, aiLevel, court, tuning.match.gamesToWin, controlMode);
-  recording = { version: 3, seed, aiLevel, mode: controlMode, tuning: structuredClone(tuning), inputs: [], ticks: 0 };
+  const seed = DEMO ? DEMO_SEED : (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0;
+  const mode: ControlMode = DEMO ? 'demo' : controlMode;
+  // En démo le match dure plusieurs jeux, pour que la partie continue après le premier échange.
+  game = createMatch(seed, aiLevel, court, DEMO ? 3 : tuning.match.gamesToWin, mode);
+  recording = { version: 3, seed, aiLevel, mode, tuning: structuredClone(tuning), inputs: [], ticks: 0 };
   landing = null;
   banner = null;
   pendingInputs.length = 0;
@@ -91,7 +103,7 @@ function resize(): void {
   const safe = getComputedStyle($('safe-probe'));
   const safeTop = parseFloat(safe.paddingTop) || 0;
   const safeBottom = parseFloat(safe.paddingBottom) || 0;
-  view.resize(safeTop + 40, safeBottom);
+  view.resize(DEMO ? safeTop : safeTop + 40, safeBottom);
 }
 
 // ——— Entrées ———
@@ -240,9 +252,9 @@ function refreshUi(): void {
   const inSandbox = screen === 'sandbox';
   titleEl.classList.toggle('hidden', screen !== 'title');
   home.classList.toggle('hidden', screen !== 'home');
-  $('hud').classList.toggle('hidden', screen === 'home' || screen === 'title');
+  $('hud').classList.toggle('hidden', DEMO || screen === 'home' || screen === 'title');
   debugEl.classList.toggle('hidden', !debug || screen === 'home' || screen === 'title');
-  overEl.classList.toggle('hidden', !inMatch || game.phase !== 'over' || performance.now() < overShowAt);
+  overEl.classList.toggle('hidden', DEMO || !inMatch || game.phase !== 'over' || performance.now() < overShowAt);
   for (const id of ['btn-replay', 'btn-lob', 'btn-debug', 'btn-settings']) $(id).classList.toggle('hidden', !inSandbox);
   $('btn-sound').textContent = sfx.enabled ? 'SON' : 'MUET';
   $('btn-debug').classList.toggle('active', debug);
@@ -285,6 +297,7 @@ function setOption(id: string, text: string, on: boolean): void {
 
 /** Consigne du moment : servir, ou frapper quand l'anneau s'allume. */
 function currentHint(): string {
+  if (DEMO) return '';
   if (screen === 'sandbox') return sandbox.ball ? '' : 'SWIPE VERS LE HAUT DEPUIS LE BAS DE L’ÉCRAN';
   if (screen !== 'match') return '';
   const firstPoint = game.score.games[0] + game.score.games[1] === 0 && game.score.points[0] + game.score.points[1] === 0 && game.phase !== 'over';
@@ -321,6 +334,7 @@ function play(): void {
 
 // PRESS START : le premier toucher lance le son et la musique, puis ouvre le menu.
 titleEl.addEventListener('click', () => {
+  if (DEMO) return;
   sfx.unlock();
   sfx.coin();
   show('home');
@@ -415,7 +429,8 @@ function onGameEvent(e: MatchEvent): void {
     anims[e.serverId].swingPose = 'low';
     sfx.hit(0.35);
   } else if (e.type === 'hit') {
-    const mine = game.players[e.playerId].isHuman;
+    // En démo, « ta » paire est jouée par l'IA mais reste celle qu'on commente à l'écran.
+    const mine = game.players[e.playerId].isHuman || (DEMO && e.team === 0);
     const smash = e.kind === 'smash';
     anims[e.playerId].swingTick = game.tick;
     anims[e.playerId].swingPose = smash || (game.ball?.pos.z ?? 0) >= 1.3 ? 'swing' : 'low';
@@ -438,6 +453,7 @@ function onGameEvent(e: MatchEvent): void {
     // En Duo, on nomme le coup joué : c'est comme ça qu'on apprend les trois gestes.
     const named = smash ? 'SMASH !' : e.kind === 'drop' ? 'AMORTIE' : e.kind === 'lob' ? 'LOB' : null;
     const label = named ?? (e.offGlass && !mistimed ? 'SORTIE DE VITRE !' : TIMING_FR[e.timing]);
+    if (DEMO && !named && !e.offGlass) return;
     showBanner(label, mistimed ? 'R' : e.timing === 'parfait' || e.offGlass || smash ? 'G' : 'W', 700);
   } else if (e.type === 'fault') {
     sfx.fault();
@@ -478,6 +494,11 @@ function onPoint(e: Extract<MatchEvent, { type: 'point' }>): void {
 }
 
 function endMatch(won: boolean, afterSlowMo: boolean): void {
+  if (DEMO) {
+    // Pas d'écran de fin ni de record en démo : on reprend au début.
+    setTimeout(startDemo, 4000);
+    return;
+  }
   const best = readBest();
   const record = game.style > (best[aiLevel] ?? 0);
   if (record) {
@@ -675,7 +696,7 @@ function hud(): Hud {
     points: pointLabels(s),
     serving: game.servingTeam,
     seconds: game.tick * FIXED_DT,
-    badge: game.mode === 'duo' ? 'DUO' : 'SOLO',
+    badge: game.mode === 'demo' ? 'DEMO' : game.mode === 'duo' ? 'DUO' : 'SOLO',
   };
 }
 
@@ -802,10 +823,85 @@ $('btn-install').addEventListener('click', () => {
 const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone) $('install-hint').classList.remove('hidden');
 
+// ——— Mode démo ———
+
+let demoRun = 0;
+let demoT0 = 0;
+
+/** Déroulé de la démo : affiche, menu qui se règle tout seul, puis le match entre IA. */
+function startDemo(): void {
+  const run = ++demoRun;
+  demoT0 = performance.now();
+  const at = (ms: number, fn: () => void) =>
+    setTimeout(() => {
+      if (run === demoRun) fn();
+    }, ms);
+  const press = (el: HTMLElement, ms = 260) => {
+    el.classList.add('pressed');
+    setTimeout(() => el.classList.remove('pressed'), ms);
+  };
+  aiLevel = 'facile';
+  controlMode = 'duo';
+  newGame();
+  show('title');
+  sfx.theme('menu');
+  // PRESS START.
+  at(3000, () => press(titleEl, 200));
+  at(3200, () => {
+    sfx.coin();
+    show('home');
+  });
+  // Choix des adversaires : le curseur descend jusqu'à Los Reyes.
+  for (const [ms, level] of [[4300, 'moyen'], [5200, 'fort']] as const) {
+    at(ms, () => {
+      aiLevel = level;
+      sfx.perfect();
+      newGame();
+      refreshUi();
+    });
+  }
+  // JOUER !
+  at(6500, () => {
+    press($('btn-play'), 420);
+    sfx.coin();
+  });
+  at(6950, () => show('match'));
+  // Si le match s'éternise, on reprend au début (la fin de match relance aussi la démo).
+  at(75000, startDemo);
+}
+
+if (DEMO) {
+  document.body.classList.add('demo');
+  sfx.enabled = true;
+  if (CAPTURE) {
+    sfx.silent = true;
+    sfx.journal = [];
+    sfx.clock = () => (performance.now() - demoT0) / 1000;
+  } else {
+    // Un visiteur doit toucher l'écran une fois pour que le navigateur autorise le son.
+    document.addEventListener('pointerdown', () => {
+      sfx.enabled = true;
+    });
+  }
+  (window as unknown as { padel86Demo: object }).padel86Demo = {
+    /** Lance (ou relance) le déroulé ; en capture, c'est le script d'enregistrement qui l'appelle. */
+    start: startDemo,
+    seconds: () => (performance.now() - demoT0) / 1000,
+    /** Bande-son des `seconds` premières secondes, en WAV encodé en base64. */
+    renderAudio: async (seconds: number) => {
+      const wav = new Uint8Array(await renderJournal(sfx.journal ?? [], seconds));
+      let bin = '';
+      for (let i = 0; i < wav.length; i += 0x8000) bin += String.fromCharCode(...wav.subarray(i, i + 0x8000));
+      return btoa(bin);
+    },
+  };
+}
+
 newGame();
 resize();
 refreshUi();
 requestAnimationFrame(frame);
+if (DEMO && !CAPTURE) startDemo();
 
 // Pour le debug depuis la console du navigateur : copy(JSON.stringify(rebote.recording())),
 // ou rebote.slowMo() pour voir l'effet « Rebote » sans attendre un coup à deux vitres.

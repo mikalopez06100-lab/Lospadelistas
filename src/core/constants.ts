@@ -304,6 +304,23 @@ export const STYLE = {
 };
 
 /**
+ * Réglages « vitrine » du mode démo (?demo=1), où les quatre joueurs sont des IA. Aucune faute
+ * directe, pour que l'échange dure. Ta paire attaque tout ce qui est haut ; celle d'en face
+ * lobe souvent et couvre un peu moins vite : l'échange finit donc sur un smash gagnant.
+ */
+/**
+ * Graine du match de démo : un premier échange d'une vingtaine de secondes, avec vitres, lobs et
+ * smashs, conclu par un smash gagnant de ta paire. Trouvée par scripts/demo-seed.test.ts ; à
+ * rechercher de nouveau si l'IA ou la physique changent (un test le signale).
+ */
+export const DEMO_SEED = 2899;
+
+export const DEMO_AI: { heroes: AiParams; rivals: AiParams } = {
+  heroes: { reaction: 0.12, moveSpeed: 5.6, aimError: 0.4, lobChance: 0.18, minDepth: 6, maxDepth: 9, errorChance: 0, openCourtBias: 0.8, homeDepth: 5.5, volleyPenalty: 0.2, serveError: 0.3, attackChance: 1, netChance: 1, loft: 0.2 },
+  rivals: { reaction: 0.2, moveSpeed: 4.3, aimError: 0.5, lobChance: 0.4, minDepth: 5.5, maxDepth: 9, errorChance: 0, openCourtBias: 0.6, homeDepth: 4, volleyPenalty: 0.5, serveError: 0.3, attackChance: 0.25, netChance: 0.3, loft: 0.3 },
+};
+
+/**
  * Aides au joueur selon le niveau choisi : le niveau règle la force des adversaires ET le
  * confort de jeu. Facile = toutes les aides, fort = aucune.
  */

@@ -3,7 +3,7 @@ import { FIXED_DT } from '../constants';
 import type { Vec2, Vec3 } from '../math/vec3';
 import { predict } from '../physics/predict';
 import { createBall } from '../physics/step';
-import { shotVelocity, type ShotKind } from './swipeToShot';
+import { landInCourt, shotVelocity, type ShotKind } from './swipeToShot';
 
 /**
  * Coup visé (utilisé par l'IA) : cherche la puissance qui fait rebondir la balle au plus
@@ -39,5 +39,8 @@ export function aimAt(
     if (reach(make(mid)) < depth) lo = mid;
     else hi = mid;
   }
-  return make((lo + hi) / 2);
+  // `hi` est la plus petite puissance testée qui passe le filet et atteint la profondeur visée :
+  // on la préfère au milieu de l'intervalle, qui peut encore finir dans le filet. Le garde-fou
+  // rattrape les cas hors plage (lob joué du filet, amortie jouée de loin).
+  return landInCourt(kind, origin, make(hi), forward, p, court);
 }

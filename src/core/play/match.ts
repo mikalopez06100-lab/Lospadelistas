@@ -1,4 +1,4 @@
-import { AIDS, AI_LEVELS, FIXED_DT, PARTNER_LEVEL, STYLE, type AiLevel, type AiParams, type CourtGeometry, type Tuning } from '../constants';
+import { AIDS, AI_LEVELS, DEMO_AI, FIXED_DT, PARTNER_LEVEL, STYLE, type AiLevel, type AiParams, type CourtGeometry, type Tuning } from '../constants';
 import { clamp, copyV3, DEG, lerp, v3, type Vec2, type Vec3 } from '../math/vec3';
 import { createBall, stepBall, type BallState, type ContactEvent } from '../physics/step';
 import {
@@ -17,7 +17,7 @@ import { styleForPoint, type StyleGain } from '../rules/style';
 import { awardPoint, createScore, pointsPlayedInGame, type MatchScore, type Team } from '../rules/score';
 import { createRng, gaussian, nextFloat, range, type Rng } from '../rng';
 import { aimAt } from '../shot/aim';
-import { shotVelocity, type ShotIntent, type ShotKind } from '../shot/swipeToShot';
+import { landInCourt, shotVelocity, type ShotIntent, type ShotKind } from '../shot/swipeToShot';
 import { chooseWindow, findWindows, type ContactWindow, type WindowChoice } from './positioning';
 
 /**
@@ -37,8 +37,9 @@ export const HUMAN_ID = 0;
  * Dans les deux modes tu diriges tes joueurs toi-même : stick pour se déplacer, geste pour frapper.
  * 'duo'  : tu diriges les joueurs 0 et 1, un pouce chacun.
  * 'solo' : tu ne diriges que le joueur 0 (Nico), d'un seul pouce ; ton partenaire est joué par l'IA.
+ * 'demo' : personne ne joue, les quatre joueurs sont pilotés par l'IA (mode vitrine, ?demo=1).
  */
-export type ControlMode = 'solo' | 'duo';
+export type ControlMode = 'solo' | 'duo' | 'demo';
 
 export interface Zone {
   xMin: number;
@@ -156,6 +157,7 @@ export function createMatch(seed: number, aiLevel: AiLevel, court: CourtGeometry
   const left: Zone = { xMin: 0, xMax: W / 2 };
   const opp = AI_LEVELS[aiLevel];
   const partner = AI_LEVELS[PARTNER_LEVEL];
+  const demo = mode === 'demo';
   const mk = (id: number, team: Team, isHuman: boolean, ai: AiParams, zone: Zone): MatchPlayer => {
     const home = homeOf(team, zone, isHuman ? 3 : ai.homeDepth, court);
     return { id, team, isHuman, ai, zone, pos: { ...home }, home, target: null, moveAfter: 0, manual: isHuman, stick: null, assistX: null, pending: null };
@@ -170,10 +172,11 @@ export function createMatch(seed: number, aiLevel: AiLevel, court: CourtGeometry
     prevPos: v3(),
     rally: createRally(),
     players: [
-      mk(0, 0, true, partner, right),
-      mk(1, 0, mode === 'duo', partner, left),
-      mk(2, 1, false, opp, left),
-      mk(3, 1, false, opp, right),
+      // En démo, les quatre joueurs sont des IA au réglage « vitrine ».
+      mk(0, 0, !demo, demo ? DEMO_AI.heroes : partner, right),
+      mk(1, 0, mode === 'duo', demo ? DEMO_AI.heroes : partner, left),
+      mk(2, 1, false, demo ? DEMO_AI.rivals : opp, left),
+      mk(3, 1, false, demo ? DEMO_AI.rivals : opp, right),
     ],
     score: createScore(gamesToWin),
     phase: 'serve',
@@ -331,7 +334,7 @@ export function tickMatch(m: Match, inputs: readonly MatchInput[], t: Tuning, co
   }
 
   // Duo : tes joueurs bougent, donc l'aide latérale se recalcule régulièrement pendant que la balle arrive.
-  if (m.phase === 'rally' && m.tick % 10 === 0 && m.rally.lastHitter === 1) assign(m, 0, t, court, dt);
+  if (m.phase === 'rally' && m.tick % 10 === 0 && m.rally.lastHitter === 1 && m.players.some((p) => p.manual)) assign(m, 0, t, court, dt);
 
   for (const p of m.players) movePlayer(m, p, t, dt, court);
 
@@ -629,7 +632,7 @@ function hitHuman(m: Match, p: MatchPlayer, intent: ShotIntent, t: Tuning, court
     kind = 'lob';
     actual = { ...intent, kind, power: 0.45 };
   }
-  const vel = shotVelocity(actual, ball.pos, t.shot, t.physics, court, 1);
+  const vel = landInCourt(kind, ball.pos, shotVelocity(actual, ball.pos, t.shot, t.physics, court, 1), 1, t.physics, court);
   // C'est toi qui te places : le timing se juge à la qualité du contact, pas à une horloge.
   const timing: Timing = quality >= 0.85 ? 'parfait' : 'juste';
   if (timing === 'parfait') m.rallyPerfects++;
@@ -653,7 +656,7 @@ function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: M
     const nearest = opponents.reduce((a, o) => (Math.abs(o.pos.x - ball.pos.x) < Math.abs(a.pos.x - ball.pos.x) ? o : a));
     const tx = clamp((nearest.pos.x < court.width / 2 ? court.width - 2 : 2) + gaussian(m.rng, ai.aimError), 0.5, court.width - 0.5);
     const intent: ShotIntent = { kind: 'smash', power: range(m.rng, 0.3, 0.9), aim: Math.atan2(tx - ball.pos.x, 8), swipeSpeed: 0, curvature: 0 };
-    const v = shotVelocity(intent, ball.pos, t.shot, t.physics, court, forward);
+    const v = landInCourt('smash', ball.pos, shotVelocity(intent, ball.pos, t.shot, t.physics, court, forward), forward, t.physics, court);
     if (nextFloat(m.rng) < ai.errorChance) spoil(v, ball.pos, m.rng, t, court);
     launch(m, p, v, out, 'smash', 1, 'juste', intent.power, t, court);
     // Les adversaires réussissent aussi, parfois, le smash qui sort la balle.
@@ -705,19 +708,22 @@ function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: M
  * ou quand tu es resté au fond, et reculent quand tu les lobes ou que tu tiens le filet.
  */
 function updateAiHomes(m: Match, hitter: MatchPlayer, kind: ShotKind, court: CourtGeometry): void {
-  const aiTeam: Team = 1;
-  const ais = m.players.filter((p) => p.team === aiTeam);
-  const humans = m.players.filter((p) => p.team !== aiTeam);
-  const humansFromNet = humans.reduce((s, h) => s + (court.netY - h.pos.y), 0) / humans.length;
-  let depth: number | null = null;
-  if (hitter.team === aiTeam) {
-    const wantsNet = kind === 'lob' || humansFromNet > 5.5;
-    if (wantsNet && nextFloat(m.rng) < ais[0].ai.netChance) depth = NET_HOME_DEPTH;
-    else if (humansFromNet < 4) depth = ais[0].ai.homeDepth;
-  } else if (kind === 'lob') {
-    depth = ais[0].ai.homeDepth;
+  for (const team of [0, 1] as const) {
+    const ais = m.players.filter((p) => p.team === team);
+    // Une équipe où un humain joue décide elle-même de monter ou non.
+    if (ais.some((p) => p.isHuman)) continue;
+    const rivals = m.players.filter((p) => p.team !== team);
+    const rivalsFromNet = rivals.reduce((s, h) => s + Math.abs(court.netY - h.pos.y), 0) / rivals.length;
+    let depth: number | null = null;
+    if (hitter.team === team) {
+      const wantsNet = kind === 'lob' || rivalsFromNet > 5.5;
+      if (wantsNet && nextFloat(m.rng) < ais[0].ai.netChance) depth = NET_HOME_DEPTH;
+      else if (rivalsFromNet < 4) depth = ais[0].ai.homeDepth;
+    } else if (kind === 'lob') {
+      depth = ais[0].ai.homeDepth;
+    }
+    if (depth !== null) for (const p of ais) p.home.y = team === 0 ? depth : court.length - depth;
   }
-  if (depth !== null) for (const p of ais) p.home.y = court.length - depth;
 }
 
 /** Conditions de position du smash parfait : balle assez haute, frappée assez près du filet. */

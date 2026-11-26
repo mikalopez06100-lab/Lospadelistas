@@ -48,6 +48,32 @@ npm run build      # build de production dans dist/
 Limite à connaître : l'installation en PWA exige du HTTPS. Le réseau local suffit pour jouer,
 pas pour tester l'installation : pour ça, utilise l'adresse Vercel.
 
+## Mode démo et vidéo
+
+**`?demo=1`** : personne ne joue. L'affiche s'ouvre, le menu se règle tout seul jusqu'à Los Reyes,
+puis quatre IA disputent un échange choisi pour être spectaculaire (vitres, lobs, smashs, conclu
+par un smash gagnant). Le déroulé reprend au début à la fin du match. Dans un navigateur, il faut
+toucher l'écran une fois pour que le son démarre (règle des navigateurs).
+En ligne : https://lospadelistas.vercel.app/?demo=1
+
+**Vidéo** : `npm run demo:video` écrit `demo.mp4` à la racine (vertical 1080×1920, 30 images/s,
+H.264 + AAC, 30 secondes ; `npm run demo:video -- 45` pour 45 secondes). Prérequis : ffmpeg et un
+Chromium pour Playwright (`CHROMIUM_PATH` pour en imposer un). Le fichier n'est pas versionné.
+
+Rien n'est capturé en temps réel (`scripts/record-demo.mjs`) :
+
+- l'horloge de la page est pilotée par Playwright : on avance de 1/30 s, on photographie, et
+  ainsi de suite. Chaque image est exacte, quelle que soit la machine ;
+- le jeu consigne chaque son avec son instant (`?demo=1&capture=1`), puis la page rejoue ce
+  journal dans un contexte audio hors ligne et rend la bande-son. Image et son sont synchrones
+  par construction ;
+- ffmpeg assemble le tout.
+
+L'échange vient d'une graine fixe (`DEMO_SEED`) et de réglages d'IA « vitrine » (`DEMO_AI`, sans
+faute directe), dans `src/core/constants.ts`. Si l'IA ou la physique changent, un test signale que
+la graine ne donne plus l'échange attendu ; on en cherche une autre avec
+`REBOTE_DEMO_SEEDS=1 npx vitest run scripts/demo-seed.test.ts`.
+
 ## Univers graphique « PÁDEL 86 »
 
 Tout l'habillage vient du kit de l'auteur ; la simulation n'en dépend pas.
@@ -93,6 +119,10 @@ Tout l'habillage vient du kit de l'auteur ; la simulation n'en dépend pas.
   C'est la longueur du geste qui choisit le coup (« long » = au moins 20 % de la hauteur de
   l'écran, réglable dans ⚙), sa vitesse dose la puissance, sa direction vise. Le nom du coup
   s'affiche à chaque frappe.
+- **Lob, smash et amortie retombent dans le court** : si le geste est bon mais que la trajectoire
+  sortirait (lob joué du filet, smash pris de loin, amortie trop courte), la vitesse est ajustée
+  pour que la balle retombe chez l'adversaire. Le coup tendu n'a pas ce garde-fou : trop fort,
+  il touche la vitre directement et c'est une faute.
 - **Par 3 et par 4** : un smash **parfait** (balle à 1,9 m ou plus, frappée à moins de 4,5 m du
   filet, timing « Parfait ») fait gicler son rebond. La balle peut alors sortir du court :
   par-dessus une paroi latérale de 3 m, c'est le **par 3** ; par-dessus le fond de 4 m (vitre +
@@ -231,7 +261,7 @@ public/        manifest, service worker, icônes, et le kit PÁDEL 86 (padel86/)
 docs/padel86/  brief, bible de l'univers et maquettes de référence
 tools/padel86/ générateurs Python des assets
 tests/         vitest
-scripts/       joueur-robot et simulation d'équilibrage (npm run sim)
+scripts/       joueur-robot, simulation d'équilibrage (npm run sim), enregistrement de la démo
 ```
 
 Choix techniques :

@@ -172,6 +172,34 @@ export function shotVelocity(
   return directionVelocity(speed, elev, intent.aim);
 }
 
+/**
+ * Garde-fou pour les coups « d'intention » (lob, smash, amortie) : si la trajectoire ne retombe
+ * pas dans le camp adverse (trop longue, dans le filet, trop courte), on ajuste la vitesse par
+ * petites touches jusqu'à ce qu'elle y retombe. Le coup tendu n'est pas concerné : frapper trop
+ * fort et toucher la vitre directement reste une faute du joueur.
+ */
+export function landInCourt(kind: ShotKind, origin: Vec3, vel: Vec3, forward: 1 | -1, p: PhysicsParams, court: CourtGeometry): Vec3 {
+  if (kind === 'drive') return vel;
+  const dt = FIXED_DT * p.timeScale;
+  const v = { ...vel };
+  for (let i = 0; i < 14; i++) {
+    const ball = createBall(origin, v);
+    const events: ContactEvent[] = [];
+    for (let n = 0; n < 4 / dt && events.length === 0 && ball.status === 'flying'; n++) stepBall(ball, dt, p, court, events);
+    const c = events[0];
+    const pastNet = c ? (c.pos.y - court.netY) * forward : Infinity;
+    const toBaseline = c ? (forward === 1 ? court.length - c.pos.y : c.pos.y) : -1;
+    if (c && c.surface === 'ground' && pastNet > 0.3 && toBaseline > 0.5) return v;
+    // Trop court (filet, ou rebond avant le filet) : on accélère. Sinon (trop long, paroi, sortie) : on freine.
+    const short = !!c && (c.surface === 'net' || (c.surface === 'ground' && pastNet <= 0.3));
+    const k = short ? 1.08 : 0.92;
+    v.x *= k;
+    v.y *= k;
+    v.z *= k;
+  }
+  return v;
+}
+
 function directionVelocity(speed: number, elev: number, aim: number): Vec3 {
   const horiz = speed * Math.cos(elev);
   return { x: horiz * Math.sin(aim), y: horiz * Math.cos(aim), z: speed * Math.sin(elev) };
