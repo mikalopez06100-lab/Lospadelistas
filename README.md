@@ -7,7 +7,8 @@ Jeu mobile de padel arcade en pixel art (16 couleurs, ambiance 1986). Le cœur d
 
 - **Duo (2 pouces, par défaut)** : tu diriges Lola et Nico, un pouce chacun. Tu les montes
   au filet, tu volleyes, tu recules quand on te lobe, tu smashes. C'est la vraie logique du padel.
-- **Classique (1 pouce)** : Nico se place tout seul, tu ne fais que frapper, Lola est jouée par l'IA.
+- **Solo (1 pouce)** : tu ne diriges que Nico, d'un seul pouce posé n'importe où sur l'écran,
+  avec les mêmes gestes ; Lola est jouée par l'IA.
 
 Trois paires adverses à battre l'une après l'autre : **Los Guiris** (facile), **Los Primos**
 (moyen), **Los Reyes** (fort). Une victoire propose d'affronter la paire suivante ; les paires
@@ -109,7 +110,7 @@ Tout l'habillage vient du kit de l'auteur ; la simulation n'en dépend pas.
 - **Service** : le carré visé est surligné. Pose le doigt n'importe où et tire un trait vers le
   haut : un trait pointillé montre la trajectoire et le point de chute en direct (blanc = dans le
   carré, rouge = faute). La direction du trait décale le point visé, sa longueur règle la
-  profondeur. Tu ajustes sans te presser, tu relâches, ça part. Pareil en mode Classique.
+  profondeur. Tu ajustes sans te presser, tu relâches, ça part. Pareil en mode Solo.
 
 ### Les aides dépendent du niveau
 
@@ -125,29 +126,11 @@ Le niveau règle la force des adversaires **et** le confort de jeu (`AIDS` et `A
 | Adversaires : balles bombées (plus de temps pour toi) | très | un peu | non |
 | Adversaires : smash, amortie, montée au filet | jamais | parfois | souvent |
 
-### Mode Classique : match en double à un pouce
+### Mode Solo : un seul pouce
 
-- **Les équipes** : toi (orange) à droite, ton partenaire IA (saumon) à gauche, contre deux IA
-  (bleu). Chacun couvre sa moitié du terrain. Dans la bande centrale, la balle revient au plus
-  rapide des deux. Avec le bouton Dbg, tu vois qui doit prendre la balle.
-- **Service** : quand c'est à toi, « À toi de servir » s'affiche. Swipe vers le haut : un geste
-  droit vise le centre du carré, la direction décale le point visé, la puissance règle la
-  profondeur. Le service part en diagonale, à droite puis à gauche. Faute → 2e balle, filet puis carré → let, deux fautes → point perdu. Après le
-  rebond, la balle peut toucher la vitre mais pas le grillage.
-- **Retour de service** : seul le receveur désigné peut jouer, et seulement après le rebond.
-- **Pendant l'échange** : quand l'anneau vert s'allume sous ton joueur, swipe vers le haut. Le
-  timing donne « Parfait ! », « Trop tôt » ou « Trop tard ». Un mauvais timing dégrade le coup,
-  mais la balle part quand même. Un swipe fait jusqu'à 220 ms avant que la balle soit à portée
-  est gardé en mémoire. Les balles de la moitié de ton partenaire, c'est lui qui les joue.
-- **Score** : 15, 30, 40, puis égalité et avantage. Le match se joue en un seul jeu, et tu sers.
-- **Chacun son côté** : Lola à gauche, Nico à droite, adversaires pareil. Au service, le serveur
-  sert une fois à droite, une fois à gauche, comme au padel, mais son partenaire ne change pas de
-  côté et le serveur regagne le sien juste après. En Duo, un joueur que tu ne touches pas ne va
-  jamais s'installer dans le couloir de son partenaire.
-- **IA : facile / moyen / fort** (adversaires seulement, ton partenaire est toujours « moyen ») :
-  réaction, vitesse, précision, jeu vers le côté libre, position plus ou moins près du filet,
-  volées amorties pour conclure, fautes directes. Les paramètres sont dans `AI_LEVELS`
-  (`src/core/constants.ts`).
+Mêmes règles et mêmes gestes que le Duo, mais tu ne diriges que Nico : glisse le pouce n'importe
+où sur l'écran pour le déplacer, coup de pouce pour frapper. Lola, ta partenaire, est jouée par
+l'IA (niveau moyen) et garde son côté. Les aides du niveau s'appliquent à Nico comme en Duo.
 
 ### Bac à sable (phase 0)
 
@@ -156,9 +139,8 @@ Le niveau règle la force des adversaires **et** le confort de jeu (`AIDS` et `A
 
 ### Dans les deux modes
 
-- **Lob** : deux modes à comparer avec le bouton « Lob ».
-  - *Lob : lent* : un swipe lent donne un lob, un swipe rapide un coup tendu.
-  - *Lob : crochet* : un swipe courbé donne un lob, un swipe droit un coup tendu.
+- **Lob (bac à sable seulement)** : deux anciens modes à comparer avec le bouton « LOB »
+  (geste lent ou geste courbé). En match, c'est la longueur du geste qui décide.
 - **Dbg** affiche la trajectoire prévue (jaune), l'aperçu du coup pendant le geste (orange),
   les impacts prévus (○ sol, ✕ vitre), le point de frappe visé par le placement (cercle vert)
   et les vitesses.
@@ -279,8 +261,8 @@ Matchs en 3 jeux gagnés par le robot, sur 6 :
 
 | Mode | Robot | IA facile | IA moyen | IA fort |
 |---|---|---|---|---|
-| Classique | bon (60 ms) | 6 | 5 | 2 |
-| Classique | moyen (120 ms) | 6 | 4 | 0 |
+| Solo, avant qu'il devienne manuel | bon (60 ms) | 6 | 5 | 2 |
+| Solo, avant qu'il devienne manuel | moyen (120 ms) | 6 | 4 | 0 |
 | Duo | bon | 6 | 6 | 5 |
 | Duo | moyen | 6 | 4 | 0 |
 

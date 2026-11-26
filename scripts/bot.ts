@@ -78,7 +78,7 @@ export class Bot {
     }
     const aim = Math.atan2(bestX - p.pos.x, court.length - 4 - p.pos.y);
     let kind: ShotIntent['kind'] = 'drive';
-    if (m.mode === 'duo' && m.ball && tuning) {
+    if (m.ball && tuning) {
       const oppAtNet = opponents.every((o) => o.pos.y - court.netY < 4.5);
       if (m.ball.pos.z >= tuning.play.smashMinZ) kind = 'smash';
       else if (oppAtNet && nextFloat(this.rng) < 0.6) kind = 'lob';

@@ -220,4 +220,23 @@ describe('match en double', () => {
       expect(pars.size).toBeGreaterThan(0);
     });
   });
+
+  it('mode 1 pouce : tu diriges Nico au stick, Lola est jouée par l’IA', () => {
+    const m = createMatch(6, 'facile', COURT, 1, 'solo');
+    const [nico, lola] = m.players;
+    expect(nico.manual).toBe(true);
+    expect(lola.isHuman).toBe(false);
+    const events: MatchEvent[] = [];
+    const drive = { kind: 'drive' as const, power: 0.5, aim: 0, swipeSpeed: 0, curvature: 0 };
+    tickMatch(m, [{ tick: 0, playerId: 0, intent: drive }], tuning, COURT, events);
+    const y0 = nico.pos.y;
+    tickMatch(m, [{ tick: 1, playerId: 0, stick: { x: 0, y: 1 } }], tuning, COURT, events);
+    for (let i = 0; i < 60; i++) tickMatch(m, [], tuning, COURT, events);
+    expect(nico.pos.y).toBeGreaterThan(y0 + 1);
+    // Un stick adressé à Lola est ignoré : elle n'est pas à toi dans ce mode.
+    const lolaBefore = { ...lola.pos };
+    tickMatch(m, [{ tick: m.tick, playerId: 1, stick: { x: 1, y: 0 } }], tuning, COURT, events);
+    expect(lola.stick).toBeNull();
+    expect(Math.abs(lola.pos.x - lolaBefore.x)).toBeLessThan(0.2);
+  });
 });

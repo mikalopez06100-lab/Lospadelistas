@@ -110,8 +110,9 @@ function previewFromSwipe(swipe: Swipe): { intent: ShotIntent; origin: Vec3; vel
   return { intent, origin, vel: shotVelocity(intent, origin, tuning.shot, tuning.physics, court) };
 }
 
+/** En match, dans les deux modes, c'est le stick et le geste de frappe qui commandent. */
 function isDuoPlaying(): boolean {
-  return screen === 'match' && game.mode === 'duo';
+  return screen === 'match';
 }
 
 function pushInput(input: MatchInput): void {
@@ -124,6 +125,8 @@ function pushInput(input: MatchInput): void {
  * fixes pendant tout le match (Lola à gauche, Nico à droite). `side` : 1 = gauche, 0 = droite.
  */
 function humanOnSide(side: number): number {
+  // Mode 1 pouce : tout l'écran dirige Nico, où que le pouce se pose.
+  if (game.mode === 'solo') return HUMAN_ID;
   const wantLeft = side === 1;
   const p = game.players.find((pl) => pl.isHuman && pl.zone.xMin < court.width / 2 === wantLeft);
   return p ? p.id : side;
@@ -261,8 +264,8 @@ function refreshUi(): void {
   $('howto').textContent =
     controlMode === 'duo'
       ? 'UN POUCE PAR JOUEUR. GLISSE POUR LE DEPLACER, COUP DE POUCE POUR FRAPPER. VERS LE HAUT : COURT = TENDU, LONG = LOB. VERS LE BAS : COURT = AMORTIE, LONG = SMASH. UN SMASH PARFAIT PRES DU FILET PEUT SORTIR LA BALLE : PAR 3 OU PAR 4 !'
-      : 'TON JOUEUR SE PLACE SEUL. QUAND L’ANNEAU VERT S’ALLUME, SWIPE VERS LE HAUT : LA DIRECTION VISE, LA VITESSE DOSE.';
-  $('opt-lob').classList.toggle('hidden', controlMode === 'duo');
+      : 'UN SEUL POUCE, N’IMPORTE OU SUR L’ECRAN : TU DIRIGES NICO, LOLA JOUE TOUTE SEULE. GLISSE POUR LE DEPLACER, COUP DE POUCE POUR FRAPPER. VERS LE HAUT : COURT = TENDU, LONG = LOB. VERS LE BAS : COURT = AMORTIE, LONG = SMASH.';
+  $('opt-lob').classList.add('hidden');
   $('btn-resume').classList.toggle('hidden', !matchInProgress());
   $('btn-play').textContent = matchInProgress() ? 'NOUVEAU MATCH' : 'JOUER !';
   const best = readBest()[aiLevel] ?? 0;
@@ -288,7 +291,7 @@ function currentHint(): string {
   const second = game.serveNumber === 2 ? ' (2E BALLE)' : '';
   if (humanServing()) return `SERVICE${second} : TIRE UN TRAIT VERS LE HAUT, AJUSTE, RELACHE`;
   if (!firstPoint) return '';
-  return game.mode === 'duo' ? 'HAUT: COURT=TENDU LONG=LOB|BAS: COURT=AMORTI LONG=SMASH' : 'ANNEAU VERT SOUS TON JOUEUR : SWIPE VERS LE HAUT !';
+  return 'HAUT: COURT=TENDU LONG=LOB|BAS: COURT=AMORTI LONG=SMASH';
 }
 
 function toggleSound(): void {
@@ -433,7 +436,7 @@ function onGameEvent(e: MatchEvent): void {
     if (e.power > 0.7 || smash) vibrate(smash ? 30 : 18, haptics);
     const mistimed = e.timing === 'tot' || e.timing === 'tard';
     // En Duo, on nomme le coup joué : c'est comme ça qu'on apprend les trois gestes.
-    const named = smash ? 'SMASH !' : e.kind === 'drop' ? 'AMORTIE' : e.kind === 'lob' && game.mode === 'duo' ? 'LOB' : null;
+    const named = smash ? 'SMASH !' : e.kind === 'drop' ? 'AMORTIE' : e.kind === 'lob' ? 'LOB' : null;
     const label = named ?? (e.offGlass && !mistimed ? 'SORTIE DE VITRE !' : TIMING_FR[e.timing]);
     showBanner(label, mistimed ? 'R' : e.timing === 'parfait' || e.offGlass || smash ? 'G' : 'W', 700);
   } else if (e.type === 'fault') {
@@ -657,7 +660,7 @@ function updateLanding(): void {
   landingDirty = false;
   landing = null;
   const ball = game.ball;
-  if (game.mode !== 'duo' || game.phase !== 'rally' || !ball || game.rally.lastHitter !== 1 || game.rally.receiverBounces > 0) return;
+  if (game.phase !== 'rally' || !ball || game.rally.lastHitter !== 1 || game.rally.receiverBounces > 0) return;
   const pred = predict(ball, tuning.physics, court, FIXED_DT * tuning.physics.timeScale, 3, 8);
   const first = pred.contacts[0];
   if (first && first.surface === 'ground' && first.pos.y < court.netY) landing = first.pos;
@@ -672,7 +675,7 @@ function hud(): Hud {
     points: pointLabels(s),
     serving: game.servingTeam,
     seconds: game.tick * FIXED_DT,
-    badge: game.mode === 'duo' ? 'DUO' : 'CLAS',
+    badge: game.mode === 'duo' ? 'DUO' : 'SOLO',
   };
 }
 

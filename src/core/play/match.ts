@@ -34,8 +34,9 @@ import { chooseWindow, findWindows, type ContactWindow, type WindowChoice } from
 export const HUMAN_ID = 0;
 
 /**
- * 'solo' : tu joues le joueur 0 au swipe, placement automatique, partenaire IA.
- * 'duo'  : tu diriges les joueurs 0 et 1, un pouce chacun (déplacement au stick, frappe au geste).
+ * Dans les deux modes tu diriges tes joueurs toi-même : stick pour se déplacer, geste pour frapper.
+ * 'duo'  : tu diriges les joueurs 0 et 1, un pouce chacun.
+ * 'solo' : tu ne diriges que le joueur 0 (Nico), d'un seul pouce ; ton partenaire est joué par l'IA.
  */
 export type ControlMode = 'solo' | 'duo';
 
@@ -157,7 +158,7 @@ export function createMatch(seed: number, aiLevel: AiLevel, court: CourtGeometry
   const partner = AI_LEVELS[PARTNER_LEVEL];
   const mk = (id: number, team: Team, isHuman: boolean, ai: AiParams, zone: Zone): MatchPlayer => {
     const home = homeOf(team, zone, isHuman ? 3 : ai.homeDepth, court);
-    return { id, team, isHuman, ai, zone, pos: { ...home }, home, target: null, moveAfter: 0, manual: isHuman && mode === 'duo', stick: null, assistX: null, pending: null };
+    return { id, team, isHuman, ai, zone, pos: { ...home }, home, target: null, moveAfter: 0, manual: isHuman, stick: null, assistX: null, pending: null };
   };
   const m: Match = {
     tick: 0,
@@ -266,7 +267,7 @@ export function isHittable(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeom
   const b = m.ball;
   if (!b || m.phase !== 'rally' || b.status === 'stopped' || b.status === 'out') return false;
   if (!canHit(m.rally, p.team, b.pos.y, court, p.id)) return false;
-  if (b.pos.z < t.play.minContactZ || b.pos.z > maxContactZ(m, t)) return false;
+  if (b.pos.z < t.play.minContactZ || b.pos.z > maxContactZ(t)) return false;
   return Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y) <= t.play.reach + glassReachBonus(m, p);
 }
 
@@ -275,9 +276,9 @@ function glassReachBonus(m: Match, p: MatchPlayer): number {
   return p.manual && m.glassSinceHit > 0 ? AIDS[m.aiLevel].glassReachBonus : 0;
 }
 
-/** En Duo, les balles hautes se jouent au-dessus de la tête (smash) ; en solo, non. */
-function maxContactZ(m: Match, t: Tuning): number {
-  return m.mode === 'duo' ? t.play.overheadZ : t.play.maxContactZ;
+/** Les balles hautes se jouent au-dessus de la tête (smash). */
+function maxContactZ(t: Tuning): number {
+  return t.play.overheadZ;
 }
 
 export function tickMatch(m: Match, inputs: readonly MatchInput[], t: Tuning, court: CourtGeometry, out: MatchEvent[]): void {
@@ -330,7 +331,7 @@ export function tickMatch(m: Match, inputs: readonly MatchInput[], t: Tuning, co
   }
 
   // Duo : tes joueurs bougent, donc l'aide latérale se recalcule régulièrement pendant que la balle arrive.
-  if (m.mode === 'duo' && m.phase === 'rally' && m.tick % 10 === 0 && m.rally.lastHitter === 1) assign(m, 0, t, court, dt);
+  if (m.phase === 'rally' && m.tick % 10 === 0 && m.rally.lastHitter === 1) assign(m, 0, t, court, dt);
 
   for (const p of m.players) movePlayer(m, p, t, dt, court);
 
@@ -479,7 +480,7 @@ function assign(m: Match, team: Team, t: Tuning, court: CourtGeometry, dt: numbe
   if (!ball) return;
   const mates = m.players.filter((p) => p.team === team);
   const maxSteps = Math.ceil(4 / dt);
-  const zMax = maxContactZ(m, t);
+  const zMax = maxContactZ(t);
   let shared: ContactWindow[] | null = null;
   const choices: (WindowChoice | null)[] = mates.map((p) => {
     const windows = m.rally.serve
@@ -490,7 +491,7 @@ function assign(m: Match, team: Team, t: Tuning, court: CourtGeometry, dt: numbe
     const reaction = p.isHuman ? 0 : p.ai.reaction;
     if (p.manual) p.assistX = assistAtDepth(mine, p, t);
     // Occasion de smash pour l'IA : une balle haute, avant le rebond, près du filet.
-    if (m.mode === 'duo' && !p.isHuman && m.aiSmashRoll < p.ai.attackChance) {
+    if (!p.isHuman && m.aiSmashRoll < p.ai.attackChance) {
       const high = mine.filter((w) => w.kind === 'volley' && w.pos.z >= t.play.smashMinZ + 0.2 && Math.abs(w.pos.y - court.netY) < 6);
       const smash = chooseWindow(high, p.pos, speed, dt, { ...t.play, idealContactZ: 2.2 }, 0);
       if (smash?.reachable && smash.slack > reaction) return { ...smash, slack: smash.slack - reaction };
@@ -629,12 +630,8 @@ function hitHuman(m: Match, p: MatchPlayer, intent: ShotIntent, t: Tuning, court
     actual = { ...intent, kind, power: 0.45 };
   }
   const vel = shotVelocity(actual, ball.pos, t.shot, t.physics, court, 1);
-  let timing: Timing = quality >= 0.85 ? 'parfait' : 'juste';
-  // En Duo c'est toi qui te places : « trop tôt / trop tard » n'a de sens qu'avec le placement automatique.
-  if (timing !== 'parfait' && p.target && !p.manual) {
-    if (m.tick < p.target.tick - 4) timing = 'tot';
-    else if (m.tick > p.target.tick + 4) timing = 'tard';
-  }
+  // C'est toi qui te places : le timing se juge à la qualité du contact, pas à une horloge.
+  const timing: Timing = quality >= 0.85 ? 'parfait' : 'juste';
   if (timing === 'parfait') m.rallyPerfects++;
   launch(m, p, vel, out, kind, quality, timing, actual.power, t, court);
   // Smash parfait : balle haute, près du filet, timing parfait. Rare, et c'est voulu.
@@ -651,7 +648,7 @@ function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: M
   const atNet = Math.abs(ball.pos.y - court.netY) < 4.5 && ball.pos.z >= 0.5;
   let kind: ShotKind;
   let target: Vec2;
-  if (m.mode === 'duo' && ai.attackChance > 0 && ball.pos.z >= t.play.smashMinZ + 0.2 && Math.abs(ball.pos.y - court.netY) < 7) {
+  if (ai.attackChance > 0 && ball.pos.z >= t.play.smashMinZ + 0.2 && Math.abs(ball.pos.y - court.netY) < 7) {
     // Balle haute à portée : smash vers le côté le plus dégagé.
     const nearest = opponents.reduce((a, o) => (Math.abs(o.pos.x - ball.pos.x) < Math.abs(a.pos.x - ball.pos.x) ? o : a));
     const tx = clamp((nearest.pos.x < court.width / 2 ? court.width - 2 : 2) + gaussian(m.rng, ai.aimError), 0.5, court.width - 0.5);
@@ -778,7 +775,7 @@ function launch(
   m.bounceFactor = 1;
   assignNobody(m, p.team);
   const receiving = other(p.team);
-  if (m.mode === 'duo') updateAiHomes(m, p, kind, court);
+  updateAiHomes(m, p, kind, court);
   for (const o of m.players) if (o.team === receiving && !o.isHuman) o.moveAfter = m.tick + Math.round(o.ai.reaction / FIXED_DT);
   assign(m, receiving, t, court, FIXED_DT * t.physics.timeScale);
   out.push({ type: 'hit', playerId: p.id, team: p.team, kind, quality, timing, power, offGlass });
