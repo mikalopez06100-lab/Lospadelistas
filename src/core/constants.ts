@@ -22,6 +22,8 @@ export interface CourtGeometry {
   netHeightPost: number;
   /** Vitre de fond, sur toute la largeur. */
   backGlassHeight: number;
+  /** Hauteur totale de la paroi de fond : vitre + grillage au-dessus. Par-dessus, c'est le « par 4 ». */
+  backWallHeight: number;
   /** Profondeur des vitres latérales mesurée depuis chaque fond. */
   sideGlassDepth: number;
   sideGlassHeight: number;
@@ -38,6 +40,7 @@ export const COURT: CourtGeometry = {
   netHeightCenter: 0.88,
   netHeightPost: 0.92,
   backGlassHeight: 3,
+  backWallHeight: 4,
   sideGlassDepth: 4,
   sideGlassHeight: 3,
   fenceHeight: 3,
@@ -126,6 +129,17 @@ export interface ShotParams {
   smashMaxSpeed: number;
   smashMaxDownDeg: number;
   smashNetClearance: number;
+  /**
+   * Rebond d'un smash chez l'adversaire : la vitesse verticale du premier rebond est multipliée
+   * par un facteur. Smash ordinaire : `smashFlat` (rebond écrasé, la balle reste dans le court).
+   * Smash parfait : de `smashKickMin` (puissance 0) à `smashKickMax` (puissance 1) ; le rebond
+   * gicle, et c'est ce qui sort la balle : par 3 le plus souvent, par 4 seulement à pleine puissance.
+   */
+  smashFlat: number;
+  smashKickMin: number;
+  smashKickMax: number;
+  /** Mode Duo : longueur du geste (fraction de la hauteur d'écran) à partir de laquelle il est « long ». */
+  longSwipe: number;
   /** Mode 'hook' : courbure (écart max à la corde / longueur) au-delà de laquelle c'est un lob. */
   hookCurvature: number;
   /** Angle latéral maximum du coup. */
@@ -160,6 +174,10 @@ export const DEFAULT_SHOT: ShotParams = {
   smashMaxSpeed: 29,
   smashMaxDownDeg: 30,
   smashNetClearance: 0.15,
+  smashFlat: 0.72,
+  smashKickMin: 0.9,
+  smashKickMax: 1.12,
+  longSwipe: 0.2,
   hookCurvature: 0.12,
   maxAimDeg: 50,
   aimGain: 1.3,
@@ -187,8 +205,13 @@ export interface PlayParams {
   volleyPenalty: number;
   /** Mode Duo : hauteur maximale d'une balle jouable au-dessus de la tête (m). */
   overheadZ: number;
-  /** Mode Duo : hauteur minimale de la balle pour smasher ; plus bas, le geste donne une amortie. */
+  /** Mode Duo : hauteur minimale de la balle pour smasher ; plus bas, le geste donne un coup tendu rasant. */
   smashMinZ: number;
+  /** Smash « parfait » (celui qui peut sortir la balle) : hauteur de balle minimale et distance maximale au filet (m). */
+  kickMinZ: number;
+  /** Hauteur de frappe idéale d'un smash (m) : c'est par rapport à elle qu'il est « Parfait ». */
+  smashIdealZ: number;
+  kickMaxNetDistance: number;
   /**
    * Mode Duo : aide latérale. Un joueur que tu ne touches pas se décale tout seul vers la balle,
    * en largeur seulement, à cette fraction de sa vitesse (0 = aucune aide). La profondeur
@@ -211,6 +234,9 @@ export const DEFAULT_PLAY: PlayParams = {
   volleyPenalty: 0.8,
   overheadZ: 2.7,
   smashMinZ: 1.6,
+  kickMinZ: 1.9,
+  smashIdealZ: 2.3,
+  kickMaxNetDistance: 4.5,
   assist: 0.7,
   duoMoveSpeed: 6.5,
 };
@@ -272,6 +298,9 @@ export const STYLE = {
   glassWinnerMaxCount: 3,
   /** À partir de ce nombre de vitres, le coup gagnant déclenche le ralenti « Rebote ». */
   slowMoGlassCount: 2,
+  /** Smash qui sort par-dessus une paroi latérale (3 m) ou par-dessus le fond (4 m). */
+  par3: 400,
+  par4: 800,
 };
 
 /**

@@ -3,7 +3,7 @@ import { COURT, DEFAULT_PHYSICS, DEFAULT_SHOT, FIXED_DT, type ShotParams } from 
 import { DEG } from '../src/core/math/vec3';
 import { predict } from '../src/core/physics/predict';
 import { createBall } from '../src/core/physics/step';
-import { analyzeSwipe, shotVelocity, type SwipeSample } from '../src/core/shot/swipeToShot';
+import { analyzeFlick, analyzeSwipe, shotVelocity, type SwipeSample } from '../src/core/shot/swipeToShot';
 
 const H = 800;
 
@@ -87,5 +87,31 @@ describe('vitesse de frappe', () => {
     const down = { points: line(200, 400, 210, 650, 120), viewportHeight: H };
     expect(analyzeSwipe(down, DEFAULT_SHOT)).toBeNull();
     expect(analyzeSwipe(down, DEFAULT_SHOT, true)?.kind).toBe('smash');
+  });
+});
+
+describe('gestes du mode Duo : la longueur choisit le coup', () => {
+  const flick = (dy: number, ms = 150) => ({ points: line(200, 500, 205, 500 + dy, ms), viewportHeight: H });
+
+  it('vers le haut : court = tendu, long = lob', () => {
+    expect(analyzeFlick(flick(-80), DEFAULT_SHOT)?.kind).toBe('drive');
+    expect(analyzeFlick(flick(-260), DEFAULT_SHOT)?.kind).toBe('lob');
+  });
+
+  it('vers le bas : court = amortie, long = smash', () => {
+    expect(analyzeFlick(flick(80), DEFAULT_SHOT)?.kind).toBe('drop');
+    expect(analyzeFlick(flick(260), DEFAULT_SHOT)?.kind).toBe('smash');
+  });
+
+  it('la vitesse ne change pas le coup, seulement sa puissance', () => {
+    const slow = analyzeFlick(flick(-80, 300), DEFAULT_SHOT)!;
+    const fast = analyzeFlick(flick(-80, 60), DEFAULT_SHOT)!;
+    expect(slow.kind).toBe('drive');
+    expect(fast.kind).toBe('drive');
+    expect(fast.power).toBeGreaterThan(slow.power);
+  });
+
+  it('un geste trop petit n’est pas un coup', () => {
+    expect(analyzeFlick(flick(-10), DEFAULT_SHOT)).toBeNull();
   });
 });

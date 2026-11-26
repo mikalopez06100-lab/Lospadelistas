@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Bot, playBotMatch } from '../scripts/bot';
-import { COURT, FIXED_DT, createDefaultTuning } from '../src/core/constants';
+import { COURT, FIXED_DT, STYLE, createDefaultTuning } from '../src/core/constants';
 import { createMatch, humanServeShot, receiverFor, serviceBox, tickMatch, type MatchEvent } from '../src/core/play/match';
 import { predict } from '../src/core/physics/predict';
 import { createBall } from '../src/core/physics/step';
@@ -167,5 +167,57 @@ describe('match en double', () => {
     }
     // Chaque équipe a servi des deux côtés.
     expect([...sides].sort()).toEqual(['0left', '0right', '1left', '1right']);
+  });
+
+  describe('smash, par 3 et par 4', () => {
+    const smash = { kind: 'smash' as const, power: 1, aim: 0, swipeSpeed: 0, curvature: 0 };
+
+    /** Place une balle haute au-dessus de Nico, près du filet, et le fait smasher. */
+    function smashFrom(z: number, aim: number, seed = 1) {
+      const m = createMatch(seed, 'fort', COURT, 1, 'duo');
+      const events: MatchEvent[] = [];
+      tickMatch(m, [{ tick: 0, playerId: 0, intent: { kind: 'drive', power: 0.5, aim: 0, swipeSpeed: 0, curvature: 0 } }], tuning, COURT, events);
+      // Situation fabriquée : l'adversaire vient de jouer, la balle flotte au-dessus de Nico.
+      const nico = m.players[0];
+      nico.pos = { x: 7, y: 8 };
+      m.ball = createBall({ x: 7, y: 8, z }, { x: 0, y: 0, z: 0 });
+      m.rally.serve = null;
+      m.rally.lastHitter = 1;
+      m.rally.receiverBounces = 0;
+      // Les adversaires sont écartés : on mesure le smash, pas leur défense.
+      for (const p of m.players) if (p.team === 1) p.pos = { x: p.pos.x, y: 19.5 };
+      events.length = 0;
+      tickMatch(m, [{ tick: m.tick, playerId: 0, intent: { ...smash, aim } }], tuning, COURT, events);
+      const hit = events.find((e) => e.type === 'hit') as Extract<MatchEvent, { type: 'hit' }> | undefined;
+      const factor = m.bounceFactor;
+      for (let i = 0; i < 120 * 6 && m.phase === 'rally'; i++) tickMatch(m, [], tuning, COURT, events);
+      const point = events.find((e) => e.type === 'point') as Extract<MatchEvent, { type: 'point' }> | undefined;
+      return { hit, factor, point };
+    }
+
+    it('balle trop basse : le smash devient un coup tendu', () => {
+      expect(smashFrom(1.0, 0).hit?.kind).toBe('drive');
+    });
+
+    it('smash parfait près du filet : le rebond gicle ; plus bas, il est écrasé', () => {
+      const perfect = smashFrom(2.3, 0);
+      expect(perfect.hit?.kind).toBe('smash');
+      expect(perfect.hit?.timing).toBe('parfait');
+      expect(perfect.factor).toBeCloseTo(tuning.shot.smashKickMax, 6);
+      // Balle smashable mais sous la hauteur du smash parfait : rebond écrasé.
+      expect(smashFrom(1.7, 0).factor).toBe(tuning.shot.smashFlat);
+    });
+
+    it('un smash parfait à pleine puissance peut sortir la balle : par 3 ou par 4, avec le bonus de style', () => {
+      const pars = new Set<number>();
+      for (const aim of [-0.6, -0.3, 0, 0.3, 0.6]) {
+        const { point } = smashFrom(2.3, aim);
+        if (!point?.par) continue;
+        pars.add(point.par);
+        expect(point.result).toEqual({ winner: 0, reason: 'sortie-apres-rebond' });
+        expect(point.style!.total).toBeGreaterThanOrEqual(point.par === 4 ? STYLE.par4 : STYLE.par3);
+      }
+      expect(pars.size).toBeGreaterThan(0);
+    });
   });
 });

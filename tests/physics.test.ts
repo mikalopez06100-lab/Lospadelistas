@@ -78,11 +78,24 @@ describe('vitres', () => {
     expect(ball.pos.y).toBeLessThan(COURT.length);
   });
 
-  it('au-dessus de la vitre, la balle sort', () => {
-    const ball = createBall({ x: 5, y: 15, z: 3.5 }, { x: 0, y: 20, z: 0 });
-    const { events } = run(ball, flat, 1 / 120, 100);
-    expect(events).toHaveLength(0);
+  it('fond de court : vitre jusqu’à 3 m, grillage jusqu’à 4 m, sortie au-dessus', () => {
+    const hitAt = (z: number) => {
+      const ball = createBall({ x: 5, y: 15, z }, { x: 0, y: 20, z: 0 });
+      const { events } = run(ball, flat, 1 / 120, 100);
+      return { surface: events[0]?.surface, status: ball.status };
+    };
+    expect(hitAt(2.5).surface).toBe('glass');
+    expect(hitAt(3.5).surface).toBe('fence');
+    expect(hitAt(4.5)).toEqual({ surface: undefined, status: 'out' });
+  });
+
+  it('une balle sortie du court continue sa course, sans plus rien toucher', () => {
+    const ball = createBall({ x: 5, y: 19, z: 4.5 }, { x: 0, y: 10, z: 2 });
+    const events: ContactEvent[] = [];
+    for (let i = 0; i < 60; i++) stepBall(ball, 1 / 120, noDrag, COURT, events);
     expect(ball.status).toBe('out');
+    expect(ball.pos.y).toBeGreaterThan(COURT.length + 2);
+    expect(events).toHaveLength(0);
   });
 
   it('pas d’effet tunnel, même à 200 m/s avec un pas énorme', () => {

@@ -17,10 +17,14 @@ export function sideWallSurface(court: CourtGeometry, y: number, z: number): Wal
   return z <= court.fenceHeight ? 'fence' : null;
 }
 
-/** Vitre de fond : toute la largeur, jusqu'à backGlassHeight. Au-dessus, la balle sort (v1). */
+/**
+ * Paroi de fond, sur toute la largeur : vitre jusqu'à backGlassHeight, grillage au-dessus
+ * jusqu'à backWallHeight. Plus haut, la balle sort du court.
+ */
 export function backWallSurface(court: CourtGeometry, x: number, z: number): WallSurface | null {
   if (x < 0 || x > court.width) return null;
-  return z <= court.backGlassHeight ? 'glass' : null;
+  if (z <= court.backGlassHeight) return 'glass';
+  return z <= court.backWallHeight ? 'fence' : null;
 }
 
 export function isInsideEnclosure(court: CourtGeometry, x: number, y: number): boolean {

@@ -78,12 +78,26 @@ Tout l'habillage vient du kit de l'auteur ; la simulation n'en dépend pas.
 - **Moitié gauche de l'écran = ton joueur de gauche, moitié droite = ton joueur de droite.**
 - **Glisser le pouce** : un stick apparaît là où tu poses le doigt, le joueur se déplace dans
   cette direction (vers le haut de l'écran = vers le filet).
-- **Coup de pouce sec** (geste de moins de 0,4 s) : le joueur frappe. Tant que le pouce file,
-  le joueur ne bouge pas : il ne se déplace que quand le pouce se pose.
-  - vers le haut, rapide : **coup tendu** ;
-  - vers le haut, en douceur : **lob** ;
-  - vers le bas : **smash** si la balle est haute (au moins 1,6 m), **amortie** sinon.
-  La direction du geste vise à gauche ou à droite. Le nom du coup s'affiche à chaque frappe.
+- **Coup de pouce** (geste de moins de 0,4 s) : le joueur frappe. Tant que le pouce file, le
+  joueur ne bouge pas : il ne se déplace que quand le pouce se pose. Une seule règle à retenir :
+  **vers le haut = j'envoie, vers le bas = je rabats ; court = doux, long = fort.**
+
+  | Geste | Coup |
+  |---|---|
+  | court vers le haut | coup tendu |
+  | long vers le haut | lob |
+  | court vers le bas | amortie |
+  | long vers le bas | smash (balle à 1,6 m ou plus ; plus bas, coup tendu appuyé) |
+
+  C'est la longueur du geste qui choisit le coup (« long » = au moins 20 % de la hauteur de
+  l'écran, réglable dans ⚙), sa vitesse dose la puissance, sa direction vise. Le nom du coup
+  s'affiche à chaque frappe.
+- **Par 3 et par 4** : un smash **parfait** (balle à 1,9 m ou plus, frappée à moins de 4,5 m du
+  filet, timing « Parfait ») fait gicler son rebond. La balle peut alors sortir du court :
+  par-dessus une paroi latérale de 3 m, c'est le **par 3** ; par-dessus le fond de 4 m (vitre +
+  grillage), c'est le **par 4**, qui demande en plus la pleine puissance. Ralenti, annonce et
+  gros bonus de style (400 et 800). Un smash ordinaire a un rebond écrasé et reste jouable.
+  Les adversaires moyens et forts y arrivent aussi, rarement.
 - **Repère jaune au sol** : l'endroit où la balle va rebondir dans ton camp. **Anneau vert** sous
   un joueur : la balle est à sa portée, c'est le moment de frapper.
 - **Aide latérale** : un joueur que tu ne touches pas se décale tout seul en largeur vers la
@@ -91,8 +105,7 @@ Tout l'habillage vient du kit de l'auteur ; la simulation n'en dépend pas.
   on te lobe alors que tu es au filet, personne ne recule à ta place. L'aide se règle ou se coupe
   dans ⚙ (« Duo — aide latérale »).
 - **Les adversaires jouent la même logique** : ils montent au filet après un lob ou quand tu
-  restes au fond, reculent quand tu les lobes, et smashent les balles hautes près du filet. Un
-  smash qui rebondit et sort par-dessus la vitre de fond donne le point (« sortie après rebond »).
+  restes au fond, reculent quand tu les lobes, et smashent les balles hautes près du filet.
 - **Service** : le carré visé est surligné. Pose le doigt n'importe où et tire un trait vers le
   haut : un trait pointillé montre la trajectoire et le point de chute en direct (blanc = dans le
   carré, rouge = faute). La direction du trait décale le point visé, sa longueur règle la
@@ -201,7 +214,9 @@ Deux façons de faire :
 | `AI_LEVELS` | Les trois niveaux d'IA (non réglables dans le panneau ⚙). |
 | `play.duoMoveSpeed` | Mode Duo : vitesse de tes joueurs au stick. |
 | `play.assist`, `play.overheadZ`, `play.smashMinZ` | Mode Duo : aide latérale, hauteur max jouable au-dessus de la tête, hauteur min pour smasher. |
-| `shot.smash*` | Vitesses du smash, angle plongeant maximum, marge au-dessus du filet. |
+| `shot.smash*` | Vitesses du smash, angle plongeant, marge au filet, et rebond : `smashFlat` (ordinaire), `smashKickMin` / `smashKickMax` (parfait : c'est ce qui règle la rareté des par 3 et par 4). |
+| `shot.longSwipe` | Mode Duo : longueur à partir de laquelle un geste est « long ». |
+| `play.kickMinZ`, `play.kickMaxNetDistance` | Conditions de position du smash parfait. |
 
 Le panneau ⚙ garde tes valeurs sur ce téléphone. Après une modification de `constants.ts`,
 clique sur « Valeurs par défaut » dans le panneau pour repartir des nouvelles valeurs.
@@ -276,7 +291,8 @@ Matchs en 3 jeux gagnés par le robot, sur 6 :
   courent plus vite. À durcir quand le niveau facile sera validé en vrai.
 - Ces mesures portent sur des matchs en 3 jeux, pour avoir assez de points ; le jeu réel se
   joue en 1 jeu.
-- `npm run sim` affiche aussi la jouabilité après la vitre par niveau (temps disponible, hauteur).
+- `npm run sim` affiche aussi la jouabilité après la vitre par niveau, où finit un smash
+  parfait ou ordinaire, et le nombre de par 3 / par 4 par camp.
 
 Ce robot n'est qu'une approximation : seul un test sur téléphone dira si le jeu est trop facile,
 trop dur ou trop passif.

@@ -179,7 +179,7 @@ export class P86View {
    * plongeante, écran large = vue plus rasante.
    */
   private fitCamera(): void {
-    const { width: W, length: L, backGlassHeight: G } = this.court;
+    const { width: W, length: L, backWallHeight: G } = this.court;
     this.camD = (FAR_RATIO * L) / (1 - FAR_RATIO);
     const D = this.camD;
     const availH = this.lh - this.top - HUD_H - BOTTOM_H - this.bottomInset - 8;
@@ -361,6 +361,14 @@ export class P86View {
     for (let x = 2; x < W; x += 2) this.line3('L', [x, L, 0], [x, L, G], g);
     this.rect('W', gx0 + 6, gy0 + 3, 5, 1, g);
     this.rect('W', gx0 + 8, gy0 + 5, 3, 1, g);
+    // Grillage au-dessus de la vitre du fond, jusqu'à 4 m : par-dessus, c'est le par 4.
+    const top = this.court.backWallHeight;
+    const my0 = this.py(L, top);
+    g.fillStyle = PAL.L;
+    for (let y = my0; y < gy0; y++) for (let x = gx0 + ((y % 2) * 2); x <= gx1; x += 4) g.fillRect(x, y, 1, 1);
+    g.fillRect(gx0, my0, gx1 - gx0 + 1, 1);
+    g.fillRect(gx0, my0, 1, gy0 - my0);
+    g.fillRect(gx1, my0, 1, gy0 - my0);
 
     // Lignes : fonds, côtés, service, ligne centrale.
     const service = L / 2 - this.court.serviceLineFromNet;
@@ -676,6 +684,8 @@ export class P86View {
 
 /** Coupe un texte en lignes d'au plus `max` caractères, sans couper les mots. */
 export function wrap(text: string, max: number): string[] {
+  // Un « | » dans le texte impose un retour à la ligne.
+  if (text.includes('|')) return text.split('|').flatMap((part) => wrap(part, max));
   const lines: string[] = [];
   let line = '';
   for (const word of text.split(' ')) {

@@ -11,7 +11,7 @@ import type { Recording } from './core/play/replay';
 import { REASON_FR } from './core/rules/rally';
 import { isDeuce, pointLabels } from './core/rules/score';
 import { createSandbox, launchBall, relaunch, tickSandbox } from './core/sandbox';
-import { analyzeSwipe, serveIntentFromDrag, shotVelocity, type ShotIntent, type Swipe } from './core/shot/swipeToShot';
+import { analyzeFlick, analyzeSwipe, serveIntentFromDrag, shotVelocity, type ShotIntent, type Swipe } from './core/shot/swipeToShot';
 import { attachDuo } from './input/duoTouch';
 import { attachSwipe } from './input/touch';
 import { P86View, type Banner, type Bottom, type Hud, type Ink, type Scene, type ScenePlayer, type SpriteName, type SpritePose } from './render/p86';
@@ -175,7 +175,7 @@ const duo = attachDuo(canvas, {
       return;
     }
     if (!quick) return;
-    const intent = analyzeSwipe(swipe, { ...tuning.shot, lobMode: 'speed' }, true);
+    const intent = analyzeFlick(swipe, tuning.shot);
     if (intent) pushInput({ tick: game.tick, playerId, intent });
   },
 });
@@ -260,7 +260,7 @@ function refreshUi(): void {
   pair.sprites.forEach((name, i) => $(`pair-${i}`).style.setProperty('--row', String(SPRITE_INDEX.indexOf(name))));
   $('howto').textContent =
     controlMode === 'duo'
-      ? 'UN POUCE PAR JOUEUR. GLISSE POUR LE DEPLACER, COUP DE POUCE SEC POUR FRAPPER : HAUT = TENDU, HAUT DOUX = LOB, BAS = SMASH. MONTE AU FILET A DEUX, RECULE QUAND ON TE LOBE.'
+      ? 'UN POUCE PAR JOUEUR. GLISSE POUR LE DEPLACER, COUP DE POUCE POUR FRAPPER. VERS LE HAUT : COURT = TENDU, LONG = LOB. VERS LE BAS : COURT = AMORTIE, LONG = SMASH. UN SMASH PARFAIT PRES DU FILET PEUT SORTIR LA BALLE : PAR 3 OU PAR 4 !'
       : 'TON JOUEUR SE PLACE SEUL. QUAND L’ANNEAU VERT S’ALLUME, SWIPE VERS LE HAUT : LA DIRECTION VISE, LA VITESSE DOSE.';
   $('opt-lob').classList.toggle('hidden', controlMode === 'duo');
   $('btn-resume').classList.toggle('hidden', !matchInProgress());
@@ -288,7 +288,7 @@ function currentHint(): string {
   const second = game.serveNumber === 2 ? ' (2E BALLE)' : '';
   if (humanServing()) return `SERVICE${second} : TIRE UN TRAIT VERS LE HAUT, AJUSTE, RELACHE`;
   if (!firstPoint) return '';
-  return game.mode === 'duo' ? 'GLISSE=BOUGER COUP SEC=TIR HAUT=TENDU DOUX=LOB BAS=SMASH' : 'ANNEAU VERT SOUS TON JOUEUR : SWIPE VERS LE HAUT !';
+  return game.mode === 'duo' ? 'HAUT: COURT=TENDU LONG=LOB|BAS: COURT=AMORTI LONG=SMASH' : 'ANNEAU VERT SOUS TON JOUEUR : SWIPE VERS LE HAUT !';
 }
 
 function toggleSound(): void {
@@ -449,7 +449,8 @@ function onGameEvent(e: MatchEvent): void {
 function onPoint(e: Extract<MatchEvent, { type: 'point' }>): void {
   landing = null;
   const ours = e.result.winner === 0;
-  const rebote = e.winnerGlass >= STYLE.slowMoGlassCount;
+  // Ralenti pour les coups d'exception : plusieurs vitres, ou balle sortie du court (par 3 / par 4).
+  const rebote = e.winnerGlass >= STYLE.slowMoGlassCount || e.par !== null;
   if (rebote) {
     // Coup gagnant après plusieurs vitres : micro-ralenti, pour savourer la trajectoire.
     slowUntil = performance.now() + SLOW_MS;
@@ -467,7 +468,8 @@ function onPoint(e: Extract<MatchEvent, { type: 'point' }>): void {
   const call = e.game ? '' : isDeuce(sc) ? 'EGALITE' : sc.points[0] >= 3 && sc.points[1] >= 3 ? (sc.points[0] > sc.points[1] ? 'AVANTAGE NOUS' : 'AVANTAGE EUX') : '';
   const reason = call || REASON_FR[e.result.reason];
   const gain = e.style ? ` +${e.style.total}` : '';
-  if (rebote && ours) showBanner('REBOTE !', 'Y', 2200, `STYLE${gain}`);
+  if (e.par) showBanner(`PAR ${e.par} !`, ours ? 'Y' : 'R', 2400, ours ? `STYLE${gain}` : 'CHEZ EUX...');
+  else if (rebote && ours) showBanner('REBOTE !', 'Y', 2200, `STYLE${gain}`);
   else showBanner(what, ours ? 'G' : 'R', e.game ? 2200 : 1600, reason + gain);
   if (e.match) endMatch(ours, rebote);
 }

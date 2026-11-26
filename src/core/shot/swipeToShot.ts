@@ -82,6 +82,27 @@ export function analyzeSwipe(swipe: Swipe, s: ShotParams, allowDown = false): Sh
 }
 
 /**
+ * Geste de frappe du mode Duo. Deux règles, faciles à retenir :
+ *   vers le haut = j'envoie, vers le bas = je rabats ; geste court = doux, geste long = fort.
+ *
+ *   haut court → coup tendu      haut long → lob
+ *   bas court  → amortie         bas long  → smash
+ *
+ * C'est la LONGUEUR du geste qui choisit le coup (plus fiable qu'une vitesse sous pression) ;
+ * sa vitesse dose la puissance, sa direction vise.
+ */
+export function analyzeFlick(swipe: Swipe, s: ShotParams): ShotIntent | null {
+  const base = analyzeSwipe(swipe, { ...s, lobMode: 'speed', lobThreshold: 0 }, true);
+  if (!base) return null;
+  const pts = swipe.points;
+  const dx = pts[pts.length - 1].x - pts[0].x;
+  const dy = pts[pts.length - 1].y - pts[0].y;
+  const long = Math.hypot(dx, dy) / swipe.viewportHeight >= s.longSwipe;
+  const kind: ShotKind = dy < 0 ? (long ? 'lob' : 'drive') : long ? 'smash' : 'drop';
+  return { ...base, kind };
+}
+
+/**
  * Geste de service : on tire un trait vers le haut, on ajuste, on relâche. La direction du trait
  * décale le point visé et sa LONGUEUR (pas sa vitesse) règle la profondeur : on peut donc prendre
  * son temps pour viser, le trait pointillé montre le résultat en direct.

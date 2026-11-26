@@ -63,8 +63,18 @@ export function stepBall(
   court: CourtGeometry,
   events?: ContactEvent[],
 ): void {
-  if (ball.status === 'stopped' || ball.status === 'out') return;
+  if (ball.status === 'stopped') return;
   const { pos, vel } = ball;
+  if (ball.status === 'out') {
+    // Hors du court, plus aucune collision : la balle poursuit simplement sa chute, pour qu'on
+    // la voie partir par-dessus la paroi. Le point, lui, est déjà joué.
+    if (pos.z <= 0) return;
+    pos.x += vel.x * dt;
+    pos.y += vel.y * dt;
+    pos.z = Math.max(0, pos.z + vel.z * dt - 0.5 * p.gravity * dt * dt);
+    vel.z -= p.gravity * dt;
+    return;
+  }
   const r = p.ballRadius;
   const W = court.width;
   const L = court.length;

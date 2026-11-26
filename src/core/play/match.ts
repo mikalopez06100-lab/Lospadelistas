@@ -1,4 +1,4 @@
-import { AIDS, AI_LEVELS, FIXED_DT, PARTNER_LEVEL, type AiLevel, type AiParams, type CourtGeometry, type Tuning } from '../constants';
+import { AIDS, AI_LEVELS, FIXED_DT, PARTNER_LEVEL, STYLE, type AiLevel, type AiParams, type CourtGeometry, type Tuning } from '../constants';
 import { clamp, copyV3, DEG, lerp, v3, type Vec2, type Vec3 } from '../math/vec3';
 import { createBall, stepBall, type BallState, type ContactEvent } from '../physics/step';
 import {
@@ -91,6 +91,8 @@ export type MatchEvent =
       style: StyleGain | null;
       /** Vitres touchées par le coup gagnant après son rebond (0 si le point vient d'une faute). */
       winnerGlass: number;
+      /** Smash gagnant sorti du court : par-dessus une paroi latérale (3) ou le fond (4). */
+      par: 3 | 4 | null;
     };
 
 export interface Match {
@@ -128,6 +130,9 @@ export interface Match {
   rallyOffGlass: number;
   /** Vitres touchées dans le camp du receveur, après le rebond, depuis la dernière frappe. */
   glassSinceHit: number;
+  /** Dernier coup joué, et facteur à appliquer à son premier rebond (smash) ; 1 = aucun effet. */
+  lastKind: ShotKind | null;
+  bounceFactor: number;
 }
 
 const SERVE_DELAY_TICKS = 110;
@@ -188,6 +193,8 @@ export function createMatch(seed: number, aiLevel: AiLevel, court: CourtGeometry
     rallyPerfects: 0,
     rallyOffGlass: 0,
     glassSinceHit: 0,
+    lastKind: null,
+    bounceFactor: 1,
   };
   setupServe(m, court);
   return m;
@@ -307,10 +314,18 @@ export function tickMatch(m: Match, inputs: readonly MatchInput[], t: Tuning, co
       m.lastContact = c;
       const hitter = m.rally.lastHitter;
       if (c.surface === 'glass' && hitter !== null && m.rally.receiverBounces >= 1 && sideOf(court, c.pos.y) !== hitter) m.glassSinceHit++;
+      // Smash : son premier rebond chez l'adversaire est écrasé (smash ordinaire) ou gicle
+      // (smash parfait, celui qui peut sortir la balle). Toute autre surface annule l'effet.
+      if (m.bounceFactor !== 1) {
+        if (c.surface === 'ground' && hitter !== null && sideOf(court, c.pos.y) !== hitter && ball.status === 'flying') {
+          ball.vel.z *= m.bounceFactor;
+        }
+        m.bounceFactor = 1;
+      }
       onContact(m.rally, c, court);
     }
     onBallStatus(m.rally, ball);
-    if (m.phase === 'rally' && m.rally.result) endRally(m, out);
+    if (m.phase === 'rally' && m.rally.result) endRally(m, out, court);
     else if (m.phase === 'rally' && contacts.length > 0 && m.rally.lastHitter !== null) assign(m, other(m.rally.lastHitter), t, court, dt);
   }
 
@@ -384,12 +399,14 @@ function serve(m: Match, t: Tuning, court: CourtGeometry, out: MatchEvent[], int
   m.rallyPerfects = 0;
   m.rallyOffGlass = 0;
   m.glassSinceHit = 0;
+  m.lastKind = null;
+  m.bounceFactor = 1;
   out.push({ type: 'serve', serverId: m.serverId, second: m.serveNumber === 2 });
   assign(m, receiving, t, court, FIXED_DT * t.physics.timeScale);
   assignNobody(m, m.servingTeam);
 }
 
-function endRally(m: Match, out: MatchEvent[]): void {
+function endRally(m: Match, out: MatchEvent[], court: CourtGeometry): void {
   const result = m.rally.result!;
   m.phase = 'pause';
   m.phaseTicks = 0;
@@ -430,7 +447,18 @@ function endRally(m: Match, out: MatchEvent[]): void {
     style = styleForPoint({ shots: m.shots, perfects: m.rallyPerfects, offGlass: m.rallyOffGlass, winnerGlass });
     m.style += style.total;
   }
-  out.push({ type: 'point', result, shots: m.shots, game, match, style, winnerGlass });
+  // Par 3 / par 4 : un smash gagnant dont la balle, après son rebond, est sortie du court.
+  let par: 3 | 4 | null = null;
+  const b = m.ball;
+  if (b && result.reason === 'sortie-apres-rebond' && m.lastKind === 'smash') {
+    par = b.pos.y < 0 || b.pos.y > court.length ? 4 : 3;
+    if (style) {
+      const bonus = par === 4 ? STYLE.par4 : STYLE.par3;
+      style = { ...style, total: style.total + bonus };
+      m.style += bonus;
+    }
+  }
+  out.push({ type: 'point', result, shots: m.shots, game, match, style, winnerGlass, par });
 }
 
 function assignNobody(m: Match, team: Team): void {
@@ -574,22 +602,26 @@ function movePlayer(m: Match, p: MatchPlayer, t: Tuning, dt: number, court: Cour
 }
 
 /** Qualité de frappe 0–1 : balle bien centrée sur le joueur et à bonne hauteur. */
-function hitQuality(ball: BallState, p: MatchPlayer, t: Tuning): number {
+function hitQuality(ball: BallState, p: MatchPlayer, t: Tuning, idealZ: number): number {
   const dxy = Math.hypot(ball.pos.x - p.pos.x, ball.pos.y - p.pos.y) / t.play.reach;
-  const dz = Math.abs(ball.pos.z - t.play.idealContactZ) / 1.2;
+  const dz = Math.abs(ball.pos.z - idealZ) / 1.2;
   return clamp(1 - 0.6 * clamp(dxy, 0, 1) - 0.4 * clamp(dz, 0, 1), 0, 1);
 }
 
 function hitHuman(m: Match, p: MatchPlayer, intent: ShotIntent, t: Tuning, court: CourtGeometry, out: MatchEvent[]): void {
   const ball = m.ball!;
-  const quality = hitQuality(ball, p, t);
+  // Un smash se juge à sa hauteur de frappe à lui (au-dessus de la tête), pas à hauteur de hanche.
+  const overhead = intent.kind === 'smash' && ball.pos.z >= t.play.smashMinZ;
+  const quality = hitQuality(ball, p, t, overhead ? t.play.smashIdealZ : t.play.idealContactZ);
   const spread = 1 - quality;
   const maxAim = t.play.maxTimingAimErrorDeg * DEG;
   const aimErr = clamp(gaussian(m.rng, 0.5) * spread * maxAim, -maxAim, maxAim);
   const powerErr = gaussian(m.rng, 0.5) * spread * t.play.maxTimingPowerError;
-  // Geste vers le bas : smash si la balle est assez haute, sinon amortie.
-  let kind: ShotKind = intent.kind === 'smash' && ball.pos.z < t.play.smashMinZ ? 'drop' : intent.kind;
-  let actual: ShotIntent = { ...intent, kind, aim: intent.aim + aimErr, power: clamp(intent.power + powerErr, 0, 1) };
+  // Smash tenté sur une balle trop basse : tu voulais frapper fort, donc coup tendu appuyé.
+  const lowSmash = intent.kind === 'smash' && ball.pos.z < t.play.smashMinZ;
+  let kind: ShotKind = lowSmash ? 'drive' : intent.kind;
+  const basePower = lowSmash ? Math.max(intent.power, 0.75) : intent.power;
+  let actual: ShotIntent = { ...intent, kind, aim: intent.aim + aimErr, power: clamp(basePower + powerErr, 0, 1) };
   // Aide du niveau : en sortie de vitre, un geste vers le haut donne un lob propre, la réponse
   // classique du padel dans cette situation. Le geste reste à faire, mais il pardonne.
   if (p.manual && m.glassSinceHit > 0 && AIDS[m.aiLevel].glassSafeLob && (kind === 'drive' || kind === 'lob')) {
@@ -605,6 +637,8 @@ function hitHuman(m: Match, p: MatchPlayer, intent: ShotIntent, t: Tuning, court
   }
   if (timing === 'parfait') m.rallyPerfects++;
   launch(m, p, vel, out, kind, quality, timing, actual.power, t, court);
+  // Smash parfait : balle haute, près du filet, timing parfait. Rare, et c'est voulu.
+  if (kind === 'smash') m.bounceFactor = smashBounce(timing === 'parfait' && canKick(ball.pos, t, court), actual.power, t);
 }
 
 function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: MatchEvent[]): void {
@@ -625,6 +659,8 @@ function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: M
     const v = shotVelocity(intent, ball.pos, t.shot, t.physics, court, forward);
     if (nextFloat(m.rng) < ai.errorChance) spoil(v, ball.pos, m.rng, t, court);
     launch(m, p, v, out, 'smash', 1, 'juste', intent.power, t, court);
+    // Les adversaires réussissent aussi, parfois, le smash qui sort la balle.
+    m.bounceFactor = smashBounce(canKick(ball.pos, t, court) && nextFloat(m.rng) < ai.attackChance * 0.1, intent.power, t);
     return;
   }
   if (atNet && nextFloat(m.rng) < ai.attackChance) {
@@ -687,6 +723,15 @@ function updateAiHomes(m: Match, hitter: MatchPlayer, kind: ShotKind, court: Cou
   if (depth !== null) for (const p of ais) p.home.y = court.length - depth;
 }
 
+/** Conditions de position du smash parfait : balle assez haute, frappée assez près du filet. */
+function canKick(from: Vec3, t: Tuning, court: CourtGeometry): boolean {
+  return from.z >= t.play.kickMinZ && Math.abs(from.y - court.netY) <= t.play.kickMaxNetDistance;
+}
+
+function smashBounce(perfect: boolean, power: number, t: Tuning): number {
+  return perfect ? lerp(t.shot.smashKickMin, t.shot.smashKickMax, power) : t.shot.smashFlat;
+}
+
 /** Faute directe de l'IA : frappe trop forte (vitre sans rebond), dans le filet, ou trop croisée. */
 function spoil(vel: Vec3, from: Vec3, rng: Rng, t: Tuning, court: CourtGeometry): void {
   const r = nextFloat(rng);
@@ -729,6 +774,8 @@ function launch(
   m.shots++;
   p.pending = null;
   m.aiSmashRoll = nextFloat(m.rng);
+  m.lastKind = kind;
+  m.bounceFactor = 1;
   assignNobody(m, p.team);
   const receiving = other(p.team);
   if (m.mode === 'duo') updateAiHomes(m, p, kind, court);
