@@ -32,7 +32,7 @@ describe('match en double', () => {
     expect(b.ball?.pos).toEqual(a.match.ball?.pos);
   });
 
-  it('service en diagonale : du côté droit au premier point, gauche au suivant', () => {
+  it('service en diagonale, depuis le couloir du serveur', () => {
     const m = createMatch(3, 'facile', COURT, 3);
     expect(m.serveSide).toBe('right');
     // Tu sers de ta droite (x > 5) vers la droite adverse, qui est x < 5 vue depuis l'autre camp.
@@ -128,7 +128,6 @@ describe('match en double', () => {
       // Le robot ne fait que frapper : aucun déplacement au stick, tout vient des aides.
       const inputs = bot.inputs(m, COURT, tuning).filter((i) => 'intent' in i);
       tickMatch(m, inputs, tuning, COURT, events);
-      // Le couloir de chacun est fixé pour le point (le serveur change de côté à chaque point).
       const left = m.players.find((p) => p.team === 0 && p.zone.xMin === 0)!;
       const right = m.players.find((p) => p.team === 0 && p.zone.xMin > 0)!;
       if (m.phase === 'rally') closest = Math.min(closest, right.pos.x - left.pos.x);
@@ -136,5 +135,28 @@ describe('match en double', () => {
       expect(right.pos.x).toBeGreaterThanOrEqual(COURT.width / 2 - 0.8 - 1e-9);
     }
     expect(closest).toBeGreaterThan(1);
+  });
+
+  it('personne ne change de côté de tout le match, même au service', () => {
+    const t = createDefaultTuning();
+    t.match.gamesToWin = 3;
+    const m = createMatch(21, 'moyen', COURT, 3, 'duo');
+    const bot = new Bot(8, 60);
+    const events: MatchEvent[] = [];
+    const servers = new Set<number>();
+    const mid = COURT.width / 2;
+    while (m.tick < 120 * 600 && m.phase !== 'over') {
+      tickMatch(m, bot.inputs(m, COURT, t).filter((i) => 'intent' in i), t, COURT, events);
+      if (m.phase === 'serve') {
+        servers.add(m.serverId);
+        // Au moment de servir, les quatre joueurs sont chacun dans leur moitié de largeur.
+        for (const p of m.players) expect(p.pos.x >= p.zone.xMin && p.pos.x <= p.zone.xMax).toBe(true);
+        // Et le service part bien en diagonale : le carré visé est de l'autre côté du serveur.
+        const box = serviceBox(m.servingTeam === 0 ? 1 : 0, m.serveSide, COURT);
+        expect(m.players[m.serverId].pos.x < mid).toBe(box.xMin >= mid);
+      }
+    }
+    // Sur 3 jeux gagnants, plusieurs serveurs se sont succédé, des deux côtés du terrain.
+    expect(servers.size).toBeGreaterThanOrEqual(3);
   });
 });

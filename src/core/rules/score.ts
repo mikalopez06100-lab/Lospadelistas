@@ -48,8 +48,3 @@ export function pointLabels(s: MatchScore): [string, string] {
 export function isDeuce(s: MatchScore): boolean {
   return s.points[0] >= 3 && s.points[0] === s.points[1];
 }
-
-/** Nombre de points joués dans le jeu : pair = service à droite, impair = à gauche. */
-export function pointsPlayedInGame(s: MatchScore): number {
-  return s.points[0] + s.points[1];
-}

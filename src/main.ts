@@ -120,8 +120,8 @@ function pushInput(input: MatchInput): void {
 }
 
 /**
- * Duo : chaque moitié de l'écran dirige le joueur qui tient CE côté du terrain pour le point
- * en cours (le serveur change de côté à chaque point). `side` : 1 = gauche, 0 = droite.
+ * Duo : chaque moitié de l'écran dirige le joueur qui tient ce côté du terrain. Les côtés sont
+ * fixes pendant tout le match (Lola à gauche, Nico à droite). `side` : 1 = gauche, 0 = droite.
  */
 function humanOnSide(side: number): number {
   const wantLeft = side === 1;
@@ -129,7 +129,7 @@ function humanOnSide(side: number): number {
   return p ? p.id : side;
 }
 
-/** Nom du joueur de ta paire qui tient le côté gauche (true) ou droit (false) sur ce point. */
+/** Nom du joueur de ta paire qui tient le côté gauche (true) ou droit (false). */
 function nameOnSide(left: boolean): string {
   const p = game.players.find((pl) => pl.team === 0 && pl.zone.xMin < court.width / 2 === left);
   return p ? NAMES[p.id] : '';

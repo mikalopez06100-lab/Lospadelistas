@@ -14,7 +14,7 @@ import {
   type RallyState,
 } from '../rules/rally';
 import { styleForPoint, type StyleGain } from '../rules/style';
-import { awardPoint, createScore, pointsPlayedInGame, type MatchScore, type Team } from '../rules/score';
+import { awardPoint, createScore, type MatchScore, type Team } from '../rules/score';
 import { createRng, gaussian, nextFloat, range, type Rng } from '../rng';
 import { aimAt } from '../shot/aim';
 import { shotVelocity, type ShotIntent, type ShotKind } from '../shot/swipeToShot';
@@ -226,7 +226,12 @@ function setupServe(m: Match, court: CourtGeometry): void {
   m.ball = null;
   m.phase = 'serve';
   m.phaseTicks = 0;
-  m.serveSide = pointsPlayedInGame(m.score) % 2 === 0 ? 'right' : 'left';
+  // Chacun reste de son côté pendant tout le match : le serveur sert depuis son propre couloir,
+  // en diagonale. Il n'y a pas d'alternance droite / gauche d'un point à l'autre.
+  const server = m.players[m.serverId];
+  const laneX = (server.zone.xMin + server.zone.xMax) / 2;
+  const rightBox = serviceBox(m.servingTeam, 'right', court);
+  m.serveSide = laneX >= rightBox.xMin && laneX <= rightBox.xMax ? 'right' : 'left';
   m.assigned = [null, null];
   const receiving = other(m.servingTeam);
   const serverBoxSide = serviceBox(m.servingTeam, m.serveSide, court);
@@ -250,14 +255,6 @@ function setupServe(m: Match, court: CourtGeometry): void {
     } else {
       p.pos = { ...p.home };
     }
-  }
-  // Le serveur change de côté à chaque point, et son partenaire prend l'autre : pour ce point,
-  // chacun garde le couloir où il se trouve. Personne ne retraverse le terrain après le service.
-  const half = court.width / 2;
-  for (const p of m.players) {
-    if (p.team !== m.servingTeam) continue;
-    p.zone = p.pos.x < half ? { xMin: 0, xMax: half } : { xMin: half, xMax: court.width };
-    p.home.x = (p.zone.xMin + p.zone.xMax) / 2;
   }
 }
 
