@@ -58,7 +58,6 @@ const SECTIONS: { title: string; sliders: Slider[] }[] = [
       { path: 'play.overheadZ', label: 'Duo — hauteur max au-dessus de la tête (m)', min: 2.2, max: 3.2, step: 0.05 },
       { path: 'play.smashMinZ', label: 'Duo — hauteur min pour smasher (m)', min: 1.2, max: 2.2, step: 0.05 },
       { path: 'shot.smashMaxSpeed', label: 'Smash — vitesse max (m/s)', min: 20, max: 40, step: 0.5 },
-      { path: 'match.gamesToWin', label: 'Jeux gagnants pour le match', min: 1, max: 5, step: 1 },
     ],
   },
 ];

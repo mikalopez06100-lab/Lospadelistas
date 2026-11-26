@@ -16,6 +16,7 @@
   </head>
   <body>
     <canvas id="game"></canvas>
+    <div id="safe-probe"></div>
     <div id="hud">
       <button id="btn-menu" type="button">MENU</button>
       <button id="btn-sound" type="button">SON</button>
@@ -31,7 +32,8 @@
       <p id="over-text"></p>
       <p id="over-style"></p>
       <div class="row">
-        <button id="btn-again" type="button" class="primary">REJOUER</button>
+        <button id="btn-next" type="button" class="primary hidden"></button>
+        <button id="btn-again" type="button">REJOUER</button>
         <button id="btn-over-menu" type="button">MENU</button>
       </div>
     </div>
@@ -56,14 +58,6 @@
             <button type="button" data-value="fort">LOS REYES</button>
           </div>
         </div>
-        <div class="group">
-          <span class="label">FORMAT</span>
-          <div class="options-list" id="seg-format">
-            <button type="button" data-value="1">1 JEU  3 MIN</button>
-            <button type="button" data-value="3">3 JEUX  10 MIN</button>
-          </div>
-        </div>
-
         <div class="pair">
           <div class="sprite" id="pair-0"></div>
           <div class="sprite" id="pair-1"></div>

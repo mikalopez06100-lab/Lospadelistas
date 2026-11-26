@@ -9,12 +9,12 @@ import type { ContactEvent } from './core/physics/step';
 import { createMatch, HUMAN_ID, humanServeShot, isHittable, tickMatch, type ControlMode, type Match, type MatchEvent, type MatchInput } from './core/play/match';
 import type { Recording } from './core/play/replay';
 import { REASON_FR } from './core/rules/rally';
-import { isGoldenPoint } from './core/rules/score';
+import { isDeuce, pointLabels } from './core/rules/score';
 import { createSandbox, launchBall, relaunch, tickSandbox } from './core/sandbox';
 import { analyzeSwipe, serveIntentFromDrag, shotVelocity, type ShotIntent, type Swipe } from './core/shot/swipeToShot';
 import { attachDuo } from './input/duoTouch';
 import { attachSwipe } from './input/touch';
-import { LH, LW, P86View, type Banner, type Bottom, type Hud, type Ink, type Scene, type ScenePlayer, type SpriteName, type SpritePose } from './render/p86';
+import { P86View, type Banner, type Bottom, type Hud, type Ink, type Scene, type ScenePlayer, type SpriteName, type SpritePose } from './render/p86';
 
 /**
  * PÁDEL 86 — quatre écrans :
@@ -44,6 +44,8 @@ const SPRITE_INDEX: SpriteName[] = ['lola', 'nico', 'gunther', 'brigitte', 'paco
 
 const court = COURT;
 const tuning = loadTuning();
+// Le match se joue toujours en 1 jeu (un ancien réglage enregistré pouvait dire autre chose).
+tuning.match.gamesToWin = 1;
 const sandbox = createSandbox();
 const view = new P86View(canvas, court);
 const sfx = new Sfx();
@@ -85,12 +87,11 @@ function newGame(): void {
 }
 
 function resize(): void {
-  view.resize();
-  // L'affiche du titre suit la même règle que le jeu : échelle entière, en pixels physiques.
-  const dpr = window.devicePixelRatio || 1;
-  const k = Math.max(1, Math.floor(Math.min((window.innerWidth * dpr) / LW, (window.innerHeight * dpr) / LH)));
-  titleImg.style.width = `${(LW * k) / dpr}px`;
-  titleImg.style.height = `${(LH * k) / dpr}px`;
+  // On laisse libre la rangée des boutons (et l'encoche) en haut, la barre d'accueil en bas.
+  const safe = getComputedStyle($('safe-probe'));
+  const safeTop = parseFloat(safe.paddingTop) || 0;
+  const safeBottom = parseFloat(safe.paddingBottom) || 0;
+  view.resize(safeTop + 40, safeBottom);
 }
 
 // ——— Entrées ———
@@ -100,7 +101,7 @@ function previewFromSwipe(swipe: Swipe): { intent: ShotIntent; origin: Vec3; vel
   if (!intent) return null;
   let origin;
   if (screen === 'sandbox') {
-    sandboxPlayerX = clamp(view.courtXAt(swipe.points[0].x), 0.6, court.width - 0.6);
+    sandboxPlayerX = clamp(view.courtXAt(swipe.points[0].x, tuning.shot.playerDepth), 0.6, court.width - 0.6);
     origin = { x: sandboxPlayerX, y: tuning.shot.playerDepth, z: tuning.shot.contactHeight };
   } else {
     const human = game.players[HUMAN_ID];
@@ -229,9 +230,13 @@ function refreshUi(): void {
   $('btn-lob').textContent = lobLabel;
 
   // Menu.
-  for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-level button')) b.classList.toggle('active', b.dataset.value === aiLevel);
-  for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-format button'))
-    b.classList.toggle('active', Number(b.dataset.value) === tuning.match.gamesToWin);
+  const beaten = readBeaten();
+  for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-level button')) {
+    const level = b.dataset.value as AiLevel;
+    b.classList.toggle('active', level === aiLevel);
+    // Une étoile après le nom des paires déjà battues.
+    b.textContent = PAIRS[level].team + (beaten.includes(level) ? '  *' : '');
+  }
   for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-control button')) b.classList.toggle('active', b.dataset.value === controlMode);
   const pair = PAIRS[aiLevel];
   $('pair-names').textContent = pair.names;
@@ -310,7 +315,18 @@ setInterval(() => {
 $('btn-play').addEventListener('click', play);
 $('btn-resume').addEventListener('click', () => show('match'));
 $('btn-again').addEventListener('click', play);
-$('btn-over-menu').addEventListener('click', () => show('home'));
+$('btn-next').addEventListener('click', () => {
+  if (nextLevel) chooseLevel(nextLevel);
+  play();
+});
+// Retour au menu après une victoire : la paire suivante est déjà sélectionnée.
+$('btn-over-menu').addEventListener('click', () => {
+  if (game.phase === 'over' && game.score.winner === 0 && nextLevel) {
+    chooseLevel(nextLevel);
+    newGame();
+  }
+  show('home');
+});
 $('btn-menu').addEventListener('click', () => show('home'));
 $('btn-sound').addEventListener('click', toggleSound);
 $('opt-sound').addEventListener('click', toggleSound);
@@ -332,8 +348,7 @@ $('btn-replay').addEventListener('click', () => {
 });
 for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-level button')) {
   b.addEventListener('click', () => {
-    aiLevel = b.dataset.value as AiLevel;
-    writeString('rebote.level', aiLevel);
+    chooseLevel(b.dataset.value as AiLevel);
     newGame();
     refreshUi();
   });
@@ -346,16 +361,11 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-control butto
     refreshUi();
   });
 }
-for (const b of document.querySelectorAll<HTMLButtonElement>('#seg-format button')) {
-  b.addEventListener('click', () => {
-    tuning.match.gamesToWin = Number(b.dataset.value);
-    saveTuning(tuning);
-    newGame();
-    refreshUi();
-  });
-}
 mountTuningPanel(panel, tuning, (path) => {
-  if (path === '*' || path.startsWith('match.')) newGame();
+  if (path === '*') {
+    tuning.match.gamesToWin = 1;
+    newGame();
+  }
   refreshUi();
 });
 
@@ -435,7 +445,10 @@ function onPoint(e: Extract<MatchEvent, { type: 'point' }>): void {
     sfx.pointLost();
   }
   const what = e.game && !e.match ? (ours ? 'JEU POUR NOUS' : 'JEU POUR EUX') : ours ? 'POINT POUR NOUS' : 'POINT POUR EUX';
-  const reason = REASON_FR[e.result.reason];
+  // Après 40-40, on annonce l'égalité ou l'avantage : c'est ce qui compte à ce moment-là.
+  const sc = game.score;
+  const call = e.game ? '' : isDeuce(sc) ? 'EGALITE' : sc.points[0] >= 3 && sc.points[1] >= 3 ? (sc.points[0] > sc.points[1] ? 'AVANTAGE NOUS' : 'AVANTAGE EUX') : '';
+  const reason = call || REASON_FR[e.result.reason];
   const gain = e.style ? ` +${e.style.total}` : '';
   if (rebote && ours) showBanner('REBOTE !', 'Y', 2200, `STYLE${gain}`);
   else showBanner(what, ours ? 'G' : 'R', e.game ? 2200 : 1600, reason + gain);
@@ -449,12 +462,27 @@ function endMatch(won: boolean, afterSlowMo: boolean): void {
     best[aiLevel] = game.style;
     writeString('rebote.best', JSON.stringify(best));
   }
-  const s = game.score;
-  $('over-title').textContent = won ? 'VICTOIRE !' : 'DEFAITE';
+  // Progression : une paire battue ouvre la suivante.
+  const beatenLevel = aiLevel;
+  const next = won ? LEVEL_ORDER[LEVEL_ORDER.indexOf(beatenLevel) + 1] : undefined;
+  if (won) {
+    const beaten = readBeaten();
+    if (!beaten.includes(beatenLevel)) writeString('rebote.beaten', JSON.stringify([...beaten, beatenLevel]));
+  }
+  const champion = won && !next;
+  $('over-title').textContent = champion ? 'CHAMPIONS !' : won ? 'VICTOIRE !' : 'DEFAITE';
   overEl.classList.toggle('win', won);
   overEl.classList.toggle('loss', !won);
-  $('over-text').textContent =
-    (s.gamesToWin > 1 ? `${s.games[0]} JEUX A ${s.games[1]} · ` : '') + `${PAIRS[aiLevel].team} · PLUS LONG ECHANGE : ${game.bestRally} COUPS`;
+  $('over-text').textContent = champion
+    ? `${PAIRS[beatenLevel].team} SONT BATTUS. IL NE RESTE PLUS PERSONNE !`
+    : won
+      ? `${PAIRS[beatenLevel].team} SONT BATTUS. ${PAIRS[next!].team} T'ATTENDENT...`
+      : `${PAIRS[beatenLevel].team} GAGNENT. PLUS LONG ECHANGE : ${game.bestRally} COUPS`;
+  const btnNext = $('btn-next');
+  btnNext.classList.toggle('hidden', !next);
+  $('btn-again').classList.toggle('primary', !next);
+  nextLevel = next ?? null;
+  if (next) btnNext.textContent = `AFFRONTER ${PAIRS[next].team}`;
   $('over-style').textContent = `STYLE ${game.style}${record ? ' · RECORD !' : ''}`;
   const delay = afterSlowMo ? SLOW_MS + 900 : 1700;
   overShowAt = performance.now() + delay;
@@ -465,6 +493,24 @@ function endMatch(won: boolean, afterSlowMo: boolean): void {
     else sfx.matchLost();
     refreshUi();
   }, delay);
+}
+
+const LEVEL_ORDER: AiLevel[] = ['facile', 'moyen', 'fort'];
+/** Paire proposée après une victoire. */
+let nextLevel: AiLevel | null = null;
+
+function readBeaten(): AiLevel[] {
+  try {
+    const list = JSON.parse(readString('rebote.beaten', '[]')) as unknown;
+    return Array.isArray(list) ? (list.filter((l) => LEVEL_ORDER.includes(l as AiLevel)) as AiLevel[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function chooseLevel(level: AiLevel): void {
+  aiLevel = level;
+  writeString('rebote.level', aiLevel);
 }
 
 function readBest(): Partial<Record<AiLevel, number>> {
@@ -598,16 +644,13 @@ function updateLanding(): void {
   if (first && first.surface === 'ground' && first.pos.y < court.netY) landing = first.pos;
 }
 
-const POINT_LABELS = ['0', '15', '30', '40'];
-
 function hud(): Hud {
   const s = game.score;
-  const golden = isGoldenPoint(s);
   return {
     us: 'LOLA/NICO',
     them: PAIRS[game.aiLevel].team,
-    games: [s.games[0], s.games[1]],
-    points: golden ? ['OR', 'OR'] : [POINT_LABELS[s.points[0]], POINT_LABELS[s.points[1]]],
+    games: s.gamesToWin > 1 ? [s.games[0], s.games[1]] : null,
+    points: pointLabels(s),
     serving: game.servingTeam,
     seconds: game.tick * FIXED_DT,
     badge: game.mode === 'duo' ? 'DUO' : 'CLAS',

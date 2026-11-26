@@ -299,14 +299,10 @@ export const AIDS: Record<AiLevel, Aids> = {
 export const PARTNER_LEVEL: AiLevel = 'moyen';
 
 export interface MatchParams {
-  /** Match en N jeux gagnants (point en or à 40-40, pas de sets). */
+  /** Nombre de jeux gagnants pour le match. Le jeu se joue en 1 jeu (avec égalité et avantage). */
   gamesToWin: number;
 }
 
-/**
- * 1 jeu par défaut : avec des échanges réalistes, un match en 3 jeux dure 8 à 12 minutes
- * (mesuré avec npm run sim), loin des sessions de 2 à 3 minutes visées. Réglable dans ⚙.
- */
 export const DEFAULT_MATCH: MatchParams = { gamesToWin: 1 };
 
 export interface Tuning {

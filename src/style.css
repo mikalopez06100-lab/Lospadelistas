@@ -92,11 +92,20 @@ button.primary {
   display: none !important;
 }
 
+/* Sonde invisible : permet au jeu de lire les marges de sécurité (encoche, barre d'accueil). */
+#safe-probe {
+  position: fixed;
+  visibility: hidden;
+  pointer-events: none;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 /* ——— Boutons en jeu ——— */
 
 #hud {
   position: fixed;
-  top: max(8px, env(safe-area-inset-top));
+  top: calc(env(safe-area-inset-top) + 4px);
   left: 8px;
   right: 8px;
   display: flex;
@@ -137,8 +146,14 @@ button.primary {
   background: var(--p86-nuit);
 }
 
+/* L'affiche occupe toute la largeur ; son haut et son bas sont déjà couleur nuit, donc elle se
+   fond dans le fond de l'écran sans bande visible. */
 #title img {
   display: block;
+  width: 100vw;
+  height: auto;
+  max-height: 100vh;
+  object-fit: contain;
   image-rendering: pixelated;
 }
 

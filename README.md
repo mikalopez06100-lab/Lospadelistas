@@ -9,9 +9,13 @@ Jeu mobile de padel arcade en pixel art (16 couleurs, ambiance 1986). Le cœur d
   au filet, tu volleyes, tu recules quand on te lobe, tu smashes. C'est la vraie logique du padel.
 - **Classique (1 pouce)** : Nico se place tout seul, tu ne fais que frapper, Lola est jouée par l'IA.
 
-Trois paires adverses selon le niveau : **Los Guiris** (facile), **Los Primos** (moyen),
-**Los Reyes** (fort). Match en double avec service, point en or, musique et sons du kit, ralenti
-« Rebote », score de style, et installation sur l'écran d'accueil du téléphone (PWA).
+Trois paires adverses à battre l'une après l'autre : **Los Guiris** (facile), **Los Primos**
+(moyen), **Los Reyes** (fort). Une victoire propose d'affronter la paire suivante ; les paires
+battues sont marquées d'une étoile au menu (toutes restent sélectionnables).
+
+**Un match = un jeu**, compté comme au padel : 15, 30, 40, puis égalité et avantage (deux points
+d'écart pour gagner). Service, musique et sons du kit, ralenti « Rebote », score de style, et
+installation sur l'écran d'accueil du téléphone (PWA).
 
 Jouable en ligne : https://lospadelistas.vercel.app
 
@@ -51,9 +55,14 @@ Tout l'habillage vient du kit de l'auteur ; la simulation n'en dépend pas.
 - **Références** : `docs/padel86/` (brief, bible de l'univers, maquettes du menu et du jeu).
 - **Générateurs** : `tools/padel86/*.py` (palette, police, sprites, affiche, musique), pour
   régénérer les assets après une modification.
-- **Rendu** : `src/render/p86.ts` dessine dans un canvas logique de 180×320 px (vue de dessus,
-  1 m = 12 px), agrandi à l'échelle entière maximale, sans lissage. Le HUD et les textes en jeu
-  utilisent la police bitmap 5×7 du kit (`src/render/font.ts`).
+- **Rendu** : `src/render/p86.ts`. Pixel art **en perspective et en plein écran** : le terrain
+  est vu de derrière ta paire, comme sur l'affiche, mais tracé sans lissage (remplissage ligne
+  par ligne, traits de Bresenham). La grille de pixels s'adapte à l'écran : zoom entier le plus
+  grand qui laisse au moins 180 pixels de large, puis la grille couvre tout l'écran. Pixels
+  carrés, aucune bande. Ta paire, au premier plan, est dessinée ×2 ; les adversaires ×1.
+  C'est un écart assumé par rapport à la maquette en jeu du kit (vue de dessus 180×320 fixe),
+  pour garder la lisibilité de la hauteur de balle et de la profondeur.
+  Le HUD et les textes en jeu utilisent la police bitmap 5×7 du kit (`src/render/font.ts`).
 - **Écrans HTML** (titre, menu, fin de match) : `src/style.css`, palette en variables CSS
   `--p86-*`, police Press Start 2P embarquée (pas d'appel à Google Fonts, donc hors ligne).
 - **Son** : `src/audio/sfx.ts`. Le thème démarre au premier toucher (PRESS START), joue à plein
@@ -118,10 +127,7 @@ Le niveau règle la force des adversaires **et** le confort de jeu (`AIDS` et `A
   timing donne « Parfait ! », « Trop tôt » ou « Trop tard ». Un mauvais timing dégrade le coup,
   mais la balle part quand même. Un swipe fait jusqu'à 220 ms avant que la balle soit à portée
   est gardé en mémoire. Les balles de la moitié de ton partenaire, c'est lui qui les joue.
-- **Score** : 15 – 30 – 40, point en or à 40-40 (pas d'avantage), puis jeu. Le service passe à
-  l'autre équipe à chaque jeu, et alterne entre les deux joueurs d'une même équipe.
-- **Format : 1 jeu par défaut**, réglable de 1 à 5 jeux dans ⚙ (section Jeu). Voir
-  « Équilibrage » plus bas pour savoir pourquoi ce n'est pas 3.
+- **Score** : 15, 30, 40, puis égalité et avantage. Le match se joue en un seul jeu, et tu sers.
 - **IA : facile / moyen / fort** (adversaires seulement, ton partenaire est toujours « moyen ») :
   réaction, vitesse, précision, jeu vers le côté libre, position plus ou moins près du filet,
   volées amorties pour conclure, fautes directes. Les paramètres sont dans `AI_LEVELS`
@@ -190,7 +196,6 @@ Deux façons de faire :
 | `play.moveSpeed` / `play.reach` | Vitesse du placement automatique et portée de frappe : c'est ce qui rend un coup adverse imprenable ou non. |
 | `play.maxTimingAimErrorDeg` / `maxTimingPowerError` | Pénalité d'un mauvais timing. |
 | `AI_LEVELS` | Les trois niveaux d'IA (non réglables dans le panneau ⚙). |
-| `match.gamesToWin` | Nombre de jeux gagnants pour le match (1 par défaut). |
 | `play.duoMoveSpeed` | Mode Duo : vitesse de tes joueurs au stick. |
 | `play.assist`, `play.overheadZ`, `play.smashMinZ` | Mode Duo : aide latérale, hauteur max jouable au-dessus de la tête, hauteur min pour smasher. |
 | `shot.smash*` | Vitesses du smash, angle plongeant maximum, marge au-dessus du filet. |
@@ -209,7 +214,7 @@ src/
     shot/swipeToShot.ts   geste → intention de coup → vitesse initiale
     shot/aim.ts           coup visé vers un point (utilisé par l'IA, mêmes limites que le joueur)
     rules/rally.ts        règles de l'échange et du service : fautes, let, double rebond
-    rules/score.ts        15-30-40, point en or, jeux, fin de match
+    rules/score.ts        15-30-40, égalité, avantage, jeu, fin de match
     rules/style.ts        score de style d'un point
     play/positioning.ts   placement automatique : instants où la balle sera jouable
     play/match.ts         match en double : service, répartition des balles, frappes, IA
@@ -217,7 +222,7 @@ src/
     rng.ts                aléatoire à graine (jamais Math.random dans core/)
     sandbox.ts            état du bac à sable (phase 0)
   render/      Canvas 2D : lit l'état sans jamais le modifier
-    p86.ts                rendu pixel 180×320 : terrain, sprites, balle, HUD, effets
+    p86.ts                rendu pixel en perspective, plein écran : terrain, sprites, balle, HUD
     font.ts               police bitmap 5×7 du kit
   input/       touch.ts (un swipe, mode classique) et duoTouch.ts (deux pouces : stick + frappe)
   audio/       sons et musique du kit, vibrations
@@ -266,7 +271,8 @@ Matchs en 3 jeux gagnés par le robot, sur 6 :
 - **Facile est maintenant un vrai niveau d'apprentissage** dans les deux modes.
 - **En Duo, « fort » est trop facile pour un joueur précis** (5 sur 6) depuis que tes joueurs
   courent plus vite. À durcir quand le niveau facile sera validé en vrai.
-- **Un match en 3 jeux dure 6 à 20 minutes** selon le niveau, d'où le format en 1 jeu par défaut.
+- Ces mesures portent sur des matchs en 3 jeux, pour avoir assez de points ; le jeu réel se
+  joue en 1 jeu.
 - `npm run sim` affiche aussi la jouabilité après la vitre par niveau (temps disponible, hauteur).
 
 Ce robot n'est qu'une approximation : seul un test sur téléphone dira si le jeu est trop facile,
