@@ -1,25 +1,48 @@
 import type { Surface } from '../core/physics/step';
 
 /**
- * Sons synthétisés en WebAudio : aucun fichier à charger, donc rien à télécharger ni à mettre
- * en cache. Le jeu reste entièrement jouable sans son (tout a un retour visuel).
- * Sur iOS, le son ne démarre qu'après un premier geste : appeler unlock() sur pointerdown.
+ * Son de PÁDEL 86 : échantillons du kit (public/padel86/sfx) et thème musical en boucle.
+ * Les impacts sans échantillon (sol, filet, grillage) restent synthétisés, discrets.
+ * Le jeu reste entièrement jouable sans son. Sur iOS, rien ne démarre avant un premier
+ * geste : appeler unlock() sur pointerdown, et theme() depuis ce même geste.
  */
+const SAMPLES = ['coin', 'hit', 'vitre', 'smash', 'point', 'faute', 'victoire', 'defaite'] as const;
+type Sample = (typeof SAMPLES)[number];
+export type ThemeMode = 'menu' | 'match' | 'off';
+
+/** Volume du thème : plein au menu, −6 dB en match. */
+const THEME_GAIN: Record<ThemeMode, number> = { menu: 0.55, match: 0.275, off: 0 };
+
 export class Sfx {
-  enabled = true;
+  private on = true;
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
+  private buffers = new Map<Sample, AudioBuffer>();
+  private loading = false;
+  private wanted: { name: Sample; at: number } | null = null;
+  private themeEl: HTMLAudioElement | null = null;
+  private themeGain: GainNode | null = null;
+  private themeMode: ThemeMode = 'off';
+
+  get enabled(): boolean {
+    return this.on;
+  }
+
+  set enabled(v: boolean) {
+    this.on = v;
+    this.applyTheme();
+  }
 
   unlock(): void {
-    if (!this.enabled) return;
+    if (!this.on) return;
     try {
       if (!this.ctx) {
         const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!Ctor) return;
         this.ctx = new Ctor();
         this.master = this.ctx.createGain();
-        this.master.gain.value = 0.5;
+        this.master.gain.value = 0.6;
         this.master.connect(this.ctx.destination);
         const len = Math.floor(this.ctx.sampleRate * 0.5);
         this.noiseBuffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -27,15 +50,101 @@ export class Sfx {
         for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
       }
       if (this.ctx.state === 'suspended') void this.ctx.resume();
+      this.loadSamples();
     } catch {
       // Pas d'audio sur cet appareil : le jeu continue sans.
       this.ctx = null;
     }
   }
 
-  private ready(): AudioContext | null {
-    return this.enabled && this.ctx && this.ctx.state === 'running' ? this.ctx : null;
+  private loadSamples(): void {
+    const ctx = this.ctx;
+    if (!ctx || this.loading) return;
+    this.loading = true;
+    for (const name of SAMPLES) {
+      fetch(`./padel86/sfx/${name}.mp3`)
+        .then((r) => r.arrayBuffer())
+        .then((data) => ctx.decodeAudioData(data))
+        .then((buf) => {
+          this.buffers.set(name, buf);
+          if (this.wanted?.name === name && performance.now() - this.wanted.at < 1500) this.sample(name);
+        })
+        .catch(() => {
+          // Échantillon indisponible : le son correspondant est simplement muet.
+        });
+    }
   }
+
+  private ready(): AudioContext | null {
+    return this.on && this.ctx && this.ctx.state === 'running' ? this.ctx : null;
+  }
+
+  private sample(name: Sample, gain = 1): void {
+    const ctx = this.ctx;
+    if (!this.on || !ctx) return;
+    const buf = this.buffers.get(name);
+    if (!buf) {
+      // Tout premier toucher : l'échantillon n'est pas encore décodé, on le jouera dès qu'il l'est.
+      this.wanted = { name, at: performance.now() };
+      return;
+    }
+    const go = () => {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const g = ctx.createGain();
+      g.gain.value = gain;
+      src.connect(g).connect(this.master!);
+      src.start();
+    };
+    if (ctx.state === 'running') go();
+    else void ctx.resume().then(go, () => undefined);
+  }
+
+  // ——— Thème musical ———
+
+  /** Choisit l'ambiance. À appeler depuis un geste de l'utilisateur la première fois. */
+  theme(mode: ThemeMode): void {
+    this.themeMode = mode;
+    this.applyTheme();
+  }
+
+  private applyTheme(): void {
+    const play = this.on && this.themeMode !== 'off';
+    if (!play) {
+      this.themeEl?.pause();
+      return;
+    }
+    try {
+      if (!this.themeEl) {
+        this.themeEl = new Audio('./padel86/padel86-theme.mp3');
+        this.themeEl.loop = true;
+        this.themeEl.preload = 'auto';
+      }
+      // Le volume d'un <audio> est figé sur iOS : on passe par un gain WebAudio.
+      if (this.ctx && this.master && !this.themeGain) {
+        this.themeGain = this.ctx.createGain();
+        this.ctx.createMediaElementSource(this.themeEl).connect(this.themeGain).connect(this.master);
+      }
+      if (this.themeGain) this.themeGain.gain.value = THEME_GAIN[this.themeMode] / 0.6;
+      else this.themeEl.volume = THEME_GAIN[this.themeMode];
+      void this.themeEl.play().catch(() => {
+        // Lecture refusée (pas encore de geste) : elle repartira au prochain toucher.
+      });
+    } catch {
+      // Musique indisponible : sans conséquence pour le jeu.
+    }
+  }
+
+  /** Coupe le thème et le remet au début (fin de match). */
+  stopTheme(): void {
+    this.themeMode = 'off';
+    if (this.themeEl) {
+      this.themeEl.pause();
+      this.themeEl.currentTime = 0;
+    }
+  }
+
+  // ——— Synthèse, pour les impacts sans échantillon ———
 
   private tone(freq: number, dur: number, gain: number, type: OscillatorType = 'sine', delay = 0, freqEnd = freq): void {
     const ctx = this.ready();
@@ -71,63 +180,61 @@ export class Sfx {
     src.stop(t0 + dur + 0.02);
   }
 
-  /** Frappe de pala : claquement sec, plus grave et plus fort avec la puissance. */
+  // ——— Événements du jeu ———
+
+  coin(): void {
+    this.sample('coin');
+  }
+
   hit(power: number): void {
-    const v = 0.35 + 0.65 * power;
-    this.noise(0.05, 0.7 * v, 'bandpass', 1500 + 900 * power, 1.2);
-    this.tone(240, 0.08, 0.5 * v, 'sine', 0, 110);
+    this.sample('hit', 0.55 + 0.45 * power);
+  }
+
+  smash(): void {
+    this.sample('smash');
   }
 
   /** Impact sur une surface ; `speed` = vitesse perpendiculaire en m/s. */
   contact(surface: Surface, speed: number): void {
     const v = Math.min(1, 0.2 + speed / 14);
-    if (surface === 'ground') {
-      this.tone(170, 0.09, 0.55 * v, 'sine', 0, 70);
-      this.noise(0.03, 0.2 * v, 'lowpass', 900);
-    } else if (surface === 'glass') {
-      // Le son vedette : un « tonk » de verre, corps grave + partiels clairs désaccordés.
-      const detune = 0.97 + Math.random() * 0.06;
-      this.tone(130, 0.12, 0.5 * v, 'sine', 0, 80);
-      this.tone(1180 * detune, 0.28, 0.28 * v, 'triangle');
-      this.tone(1790 * detune, 0.2, 0.16 * v, 'sine');
-      this.tone(2710 * detune, 0.12, 0.08 * v, 'sine');
-      this.noise(0.025, 0.35 * v, 'highpass', 3500);
+    if (surface === 'glass') {
+      this.sample('vitre', 0.5 + 0.5 * v);
+    } else if (surface === 'ground') {
+      this.tone(170, 0.07, 0.3 * v, 'square', 0, 70);
     } else if (surface === 'fence') {
-      for (let i = 0; i < 3; i++) this.noise(0.05, 0.3 * v, 'bandpass', 2600 + i * 500, 3, i * 0.035);
+      for (let i = 0; i < 3; i++) this.noise(0.05, 0.25 * v, 'bandpass', 2600 + i * 500, 3, i * 0.035);
     } else {
-      this.noise(0.16, 0.4 * v, 'lowpass', 420);
+      this.noise(0.16, 0.35 * v, 'lowpass', 420);
     }
   }
 
   perfect(): void {
-    this.tone(1320, 0.09, 0.12, 'sine', 0.02);
+    this.tone(1320, 0.08, 0.1, 'square', 0.02);
   }
 
   fault(): void {
-    this.tone(196, 0.16, 0.22, 'square', 0, 150);
+    this.sample('faute');
   }
 
   pointWon(): void {
-    this.tone(660, 0.12, 0.25, 'triangle');
-    this.tone(880, 0.2, 0.25, 'triangle', 0.1);
+    this.sample('point');
   }
 
   pointLost(): void {
-    this.tone(330, 0.14, 0.2, 'triangle');
-    this.tone(247, 0.24, 0.2, 'triangle', 0.12);
+    this.sample('faute', 0.8);
   }
 
-  /** Coup gagnant via les vitres : montée scintillante pendant le ralenti. */
+  /** Coup gagnant via les vitres : arpège 8 bits pendant le ralenti. */
   rebote(): void {
-    [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.35, 0.16, 'triangle', i * 0.09));
+    [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.3, 0.12, 'square', i * 0.09));
   }
 
   matchWon(): void {
-    [523, 659, 784, 1047].forEach((f, i) => this.tone(f, i === 3 ? 0.5 : 0.16, 0.26, 'triangle', i * 0.14));
+    this.sample('victoire');
   }
 
   matchLost(): void {
-    [392, 330, 262].forEach((f, i) => this.tone(f, i === 2 ? 0.5 : 0.2, 0.22, 'triangle', i * 0.18));
+    this.sample('defaite');
   }
 }
 

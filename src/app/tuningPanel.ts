@@ -61,18 +61,6 @@ const SECTIONS: { title: string; sliders: Slider[] }[] = [
       { path: 'match.gamesToWin', label: 'Jeux gagnants pour le match', min: 1, max: 5, step: 1 },
     ],
   },
-  {
-    title: 'Vue',
-    sliders: [
-      { path: 'view.camDistance', label: 'Recul caméra (m)', min: 15, max: 100, step: 1 },
-      { path: 'view.camHeight', label: 'Hauteur caméra (m)', min: 10, max: 120, step: 1 },
-      { path: 'view.ballVisualRadius', label: 'Taille balle (m)', min: 0.04, max: 0.2, step: 0.005 },
-      { path: 'view.playerScale', label: 'Taille des joueurs', min: 0.8, max: 1.8, step: 0.05 },
-      { path: 'view.heightSizeGain', label: 'Grossissement / hauteur', min: 0, max: 0.4, step: 0.01 },
-      { path: 'view.shadowOffsetX', label: 'Décalage ombre X', min: -0.5, max: 0.5, step: 0.01 },
-      { path: 'view.shadowOffsetY', label: 'Décalage ombre Y', min: -0.5, max: 0.5, step: 0.01 },
-    ],
-  },
 ];
 
 const STORAGE_KEY = 'rebote.tuning.v1';
@@ -153,7 +141,6 @@ export function mountTuningPanel(root: HTMLElement, tuning: Tuning, onChange: (p
         const d = createDefaultTuning();
         Object.assign(tuning.physics, d.physics);
         Object.assign(tuning.shot, d.shot);
-        Object.assign(tuning.view, d.view);
         Object.assign(tuning.play, d.play);
         Object.assign(tuning.match, d.match);
         saveTuning(tuning);

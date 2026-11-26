@@ -1,8 +1,25 @@
+/*
+ * PÁDEL 86 — habillage des écrans HTML (titre, menu, fin de match, réglages).
+ * Palette stricte du kit, police Press Start 2P, tailles en multiples de 8 px,
+ * aucun dégradé ni ombre floue : seulement des aplats et des ombres décalées de 2 px.
+ */
 :root {
-  --bg: #0b1622;
-  --fg: #e8f0f8;
-  --accent: #e4f23a;
-  --panel: rgba(12, 22, 34, 0.94);
+  --p86-nuit: #0b1622;
+  --p86-bleu-nuit: #1d2b53;
+  --p86-bleu-pista: #2a5bd7;
+  --p86-cyan-neon: #29e0ff;
+  --p86-rose-pop: #ff3d8b;
+  --p86-violet: #8f3bd9;
+  --p86-jaune-balle: #ffd23f;
+  --p86-orange-sunset: #ff8a1f;
+  --p86-rouge: #e8323c;
+  --p86-vert: #3ec46d;
+  --p86-creme: #fff4e0;
+  --p86-peau-claire: #f6c08f;
+  --p86-peau-mate: #c27a4c;
+  --p86-chatain: #7a4128;
+  --p86-acier: #8a94a6;
+  --p86-brun: #2b1810;
 }
 
 * {
@@ -13,9 +30,11 @@ html,
 body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--p86-nuit);
+  color: var(--p86-creme);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  line-height: 2;
   overflow: hidden;
   /* Pas de rebond de page, pas de pull-to-refresh, pas de sélection sur appui long. */
   overscroll-behavior: none;
@@ -23,6 +42,7 @@ body {
   user-select: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: none;
 }
 
 #game {
@@ -32,7 +52,47 @@ body {
   height: 100%;
   display: block;
   touch-action: none;
+  image-rendering: pixelated;
 }
+
+button {
+  font: inherit;
+  color: var(--p86-acier);
+  background: var(--p86-nuit);
+  border: 2px solid var(--p86-acier);
+  border-radius: 0;
+  padding: 8px;
+  min-height: 40px;
+  text-transform: uppercase;
+}
+
+button.active,
+button.on {
+  color: var(--p86-creme);
+  background: var(--p86-rose-pop);
+  border-color: var(--p86-creme);
+  box-shadow: 4px 4px 0 var(--p86-violet);
+}
+
+button.primary {
+  color: var(--p86-nuit);
+  background: var(--p86-jaune-balle);
+  border-color: var(--p86-creme);
+  box-shadow: 4px 4px 0 var(--p86-rose-pop);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ——— Boutons en jeu ——— */
 
 #hud {
   position: fixed;
@@ -41,97 +101,213 @@ body {
   right: 8px;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-start;
+  gap: 8px;
   pointer-events: none;
 }
 
-#score {
-  position: fixed;
-  left: 12px;
-  bottom: max(16px, env(safe-area-inset-bottom));
-  font-size: 18px;
-  font-weight: 700;
-  pointer-events: none;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-}
-
-#score small {
-  display: block;
-  font-size: 12px;
-  font-weight: 400;
-  opacity: 0.75;
-}
-
-#score .me {
-  color: #ff8a6e;
-}
-
-#score .ai {
-  color: #7fdcff;
-}
-
-#feedback {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 42%;
-  text-align: center;
-  font-size: 26px;
-  font-weight: 800;
-  pointer-events: none;
-  opacity: 0;
-  transform: scale(0.9);
-  transition: opacity 0.15s, transform 0.15s;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
-}
-
-#feedback.show {
-  opacity: 1;
-  transform: scale(1);
-}
-
-#feedback.good {
-  color: #9dff9d;
-}
-
-#feedback.bad {
-  color: #ff9d8a;
-}
-
-#feedback.info {
-  color: var(--fg);
-}
-
-#hud button,
-#panel button {
+#hud button {
   pointer-events: auto;
-  font: inherit;
-  font-size: 13px;
-  color: var(--fg);
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  padding: 8px 10px;
-  min-height: 36px;
+  min-height: 32px;
+  padding: 0 8px;
+  color: var(--p86-cyan-neon);
+  border-color: var(--p86-cyan-neon);
 }
 
-#hud button.active {
-  background: rgba(228, 242, 58, 0.25);
-  border-color: var(--accent);
-}
-
-#hint {
+#debug {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: max(72px, calc(env(safe-area-inset-bottom) + 56px));
-  padding: 0 16px;
-  text-align: center;
-  font-size: 14px;
-  opacity: 0.75;
+  left: 8px;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  margin: 0;
+  padding: 8px;
+  font: 10px ui-monospace, Menlo, monospace;
+  color: var(--p86-creme);
+  background: var(--p86-nuit);
+  border: 1px solid var(--p86-acier);
   pointer-events: none;
 }
+
+/* ——— Écran titre ——— */
+
+#title {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--p86-nuit);
+}
+
+#title img {
+  display: block;
+  image-rendering: pixelated;
+}
+
+/* ——— Menu ——— */
+
+#home {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  touch-action: pan-y;
+  /* Damier rétro de la maquette (cases de 20 px). */
+  background-color: var(--p86-nuit);
+  background-image: conic-gradient(var(--p86-bleu-nuit) 25%, transparent 0 50%, var(--p86-bleu-nuit) 0 75%, transparent 0);
+  background-size: 40px 40px;
+}
+
+.home-inner {
+  max-width: 360px;
+  margin: 0 auto;
+  padding: max(24px, calc(env(safe-area-inset-top) + 16px)) 16px max(24px, env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+#home h1 {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--p86-jaune-balle);
+  text-shadow: 4px 4px 0 var(--p86-rose-pop);
+}
+
+#home .tagline {
+  margin: 0 0 16px;
+  color: var(--p86-creme);
+}
+
+#home .group {
+  margin: 16px 0;
+  text-align: left;
+}
+
+#home .label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--p86-cyan-neon);
+}
+
+.options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.options-list button {
+  width: 100%;
+  text-align: left;
+  white-space: pre;
+}
+
+.options-list button::before {
+  content: '  ';
+}
+
+.options-list button.active::before {
+  content: '> ';
+}
+
+/* Paire adverse du niveau choisi : sprites 16×24 de la planche, agrandis ×3 sans lissage. */
+.pair {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin-top: 24px;
+}
+
+.sprite {
+  --row: 0;
+  width: 48px;
+  height: 72px;
+  background-image: url('/padel86/padel86-sprites-1x.png');
+  background-size: 288px 576px;
+  background-position: 0 calc(var(--row) * -72px);
+  image-rendering: pixelated;
+}
+
+#pair-names {
+  margin: 8px 0 0;
+}
+
+#home button.big {
+  display: block;
+  width: 100%;
+  margin: 24px 0 16px;
+  font-size: 16px;
+  min-height: 56px;
+}
+
+#btn-resume,
+#btn-install {
+  display: block;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+#best {
+  min-height: 16px;
+  margin: 0 0 16px;
+  color: var(--p86-jaune-balle);
+}
+
+#home .options {
+  margin-top: 8px;
+}
+
+#home .options button {
+  flex: 1;
+  padding: 8px 0;
+}
+
+#home .howto,
+#install-hint,
+.copyright {
+  margin: 16px 0 0;
+  color: var(--p86-acier);
+}
+
+/* ——— Fin de match ——— */
+
+#over {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  top: 24%;
+  max-width: 360px;
+  margin: 0 auto;
+  padding: 16px;
+  text-align: center;
+  background: var(--p86-nuit);
+  border: 2px solid var(--p86-cyan-neon);
+  box-shadow: 4px 4px 0 var(--p86-violet);
+}
+
+#over h2 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+#over.win h2 {
+  color: var(--p86-vert);
+}
+
+#over.loss h2 {
+  color: var(--p86-rouge);
+}
+
+#over p {
+  margin: 0 0 8px;
+}
+
+#over #over-style {
+  margin-bottom: 16px;
+  font-size: 16px;
+  color: var(--p86-jaune-balle);
+}
+
+/* ——— Panneau de réglages (outil de mise au point) ——— */
 
 #panel {
   position: fixed;
@@ -140,20 +316,19 @@ body {
   bottom: 0;
   width: min(360px, 100%);
   overflow-y: auto;
-  padding: max(12px, env(safe-area-inset-top)) 16px 24px;
-  background: var(--panel);
-  font-size: 13px;
+  padding: max(16px, env(safe-area-inset-top)) 16px 24px;
+  background: var(--p86-nuit);
+  border-left: 2px solid var(--p86-cyan-neon);
   touch-action: pan-y;
   -webkit-user-select: text;
   user-select: text;
 }
 
 #panel h3 {
-  margin: 16px 0 6px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity: 0.7;
+  margin: 16px 0 8px;
+  font-size: 8px;
+  font-weight: 400;
+  color: var(--p86-cyan-neon);
 }
 
 .panel-header {
@@ -165,18 +340,18 @@ body {
 .slider-row {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 2px 8px;
+  gap: 0 8px;
   margin: 8px 0;
 }
 
 .slider-row input {
   grid-column: 1 / -1;
   width: 100%;
+  accent-color: var(--p86-rose-pop);
 }
 
 .slider-row output {
-  font-variant-numeric: tabular-nums;
-  color: var(--accent);
+  color: var(--p86-jaune-balle);
 }
 
 .panel-actions {
@@ -188,231 +363,19 @@ body {
 
 .panel-actions textarea {
   width: 100%;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 11px;
+  font: 10px ui-monospace, Menlo, monospace;
+  color: var(--p86-creme);
+  background: var(--p86-bleu-nuit);
+  border: 1px solid var(--p86-acier);
 }
 
 .panel-flash {
   margin-top: 8px;
-  color: var(--accent);
+  color: var(--p86-jaune-balle);
 }
 
-#over {
-  position: fixed;
-  left: 16px;
-  right: 16px;
-  top: 30%;
-  padding: 20px;
-  text-align: center;
-  background: var(--panel);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 14px;
-}
+/* ——— Portrait uniquement ——— */
 
-#over p {
-  margin: 0 0 14px;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.hidden {
-  display: none !important;
-}
-
-/* ——— Phase 3 : accueil, fin de match, effets ——— */
-
-button.primary {
-  color: var(--bg);
-  background: var(--accent);
-  border: 0;
-  font-weight: 700;
-}
-
-.row {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-#home {
-  position: fixed;
-  inset: 0;
-  overflow-y: auto;
-  background: linear-gradient(rgba(11, 22, 34, 0.82), rgba(11, 22, 34, 0.96));
-  touch-action: pan-y;
-}
-
-.home-inner {
-  max-width: 380px;
-  margin: 0 auto;
-  padding: max(28px, calc(env(safe-area-inset-top) + 16px)) 20px max(24px, env(safe-area-inset-bottom));
-  text-align: center;
-}
-
-#home h1 {
-  margin: 0;
-  font-size: 54px;
-  letter-spacing: -0.02em;
-  color: var(--accent);
-}
-
-#home .tagline {
-  margin: 2px 0 26px;
-  opacity: 0.8;
-}
-
-#home .group {
-  margin: 14px 0;
-}
-
-#home .label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity: 0.65;
-}
-
-#home button,
-#over button {
-  font: inherit;
-  font-size: 14px;
-  color: var(--fg);
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  padding: 10px 14px;
-  min-height: 44px;
-}
-
-#home button.primary,
-#over button.primary {
-  color: var(--bg);
-  background: var(--accent);
-  border: 0;
-}
-
-#home button.big {
-  display: block;
-  width: 100%;
-  margin: 22px 0 10px;
-  font-size: 22px;
-  padding: 16px;
-  border-radius: 14px;
-}
-
-#btn-resume,
-#btn-install {
-  display: block;
-  width: 100%;
-  margin-bottom: 10px;
-}
-
-.segmented {
-  display: flex;
-  gap: 6px;
-}
-
-.segmented button {
-  flex: 1;
-}
-
-#home .segmented button.active,
-#home .options button.on {
-  background: rgba(228, 242, 58, 0.22);
-  border-color: var(--accent);
-}
-
-#home .options {
-  margin-top: 8px;
-}
-
-#home .options button {
-  flex: 1;
-  font-size: 13px;
-  padding: 8px 6px;
-}
-
-#best {
-  min-height: 1.2em;
-  margin: 4px 0 14px;
-  font-size: 14px;
-  color: var(--accent);
-}
-
-#home .howto,
-#install-hint {
-  margin: 16px 0 0;
-  font-size: 13px;
-  line-height: 1.45;
-  opacity: 0.7;
-}
-
-#over {
-  top: 24%;
-}
-
-#over h2 {
-  margin: 0 0 6px;
-  font-size: 30px;
-}
-
-#over.win h2 {
-  color: #9dff9d;
-}
-
-#over.loss h2 {
-  color: #ff9d8a;
-}
-
-#over p {
-  margin: 0 0 8px;
-  font-size: 15px;
-  font-weight: 400;
-}
-
-#over #over-style {
-  margin-bottom: 16px;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--accent);
-}
-
-#score .style {
-  color: var(--accent);
-}
-
-#feedback small {
-  display: block;
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--accent);
-}
-
-#feedback.rebote {
-  font-size: 44px;
-  color: var(--accent);
-  letter-spacing: 0.04em;
-}
-
-/* Ralenti « Rebote » : assombrit les bords pour concentrer le regard sur la balle. */
-#vignette {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s;
-  background: radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.7) 100%);
-  box-shadow: inset 0 0 0 3px var(--accent);
-}
-
-#vignette.on {
-  opacity: 1;
-}
-
-/* Portrait uniquement. */
 #rotate {
   position: fixed;
   inset: 0;
@@ -421,9 +384,8 @@ button.primary {
   justify-content: center;
   padding: 24px;
   text-align: center;
-  font-size: 20px;
-  font-weight: 700;
-  background: var(--bg);
+  font-size: 16px;
+  background: var(--p86-nuit);
   z-index: 10;
 }
 

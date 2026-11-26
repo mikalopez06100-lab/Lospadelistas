@@ -1,0 +1,24 @@
+{
+ "cell": [
+  16,
+  24
+ ],
+ "columns": [
+  "idle",
+  "run1",
+  "run2",
+  "swing",
+  "low",
+  "back"
+ ],
+ "rows": [
+  "lola",
+  "nico",
+  "gunther",
+  "brigitte",
+  "paco",
+  "pepa",
+  "toro",
+  "reina"
+ ]
+}

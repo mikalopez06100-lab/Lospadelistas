@@ -167,32 +167,6 @@ export const DEFAULT_SHOT: ShotParams = {
   playerDepth: 1.5,
 };
 
-export interface ViewParams {
-  /** Recul de la caméra derrière le fond de court (m). Plus grand = perspective plus plate. */
-  camDistance: number;
-  /** Hauteur de la caméra (m). Plus grand = vue plus « de dessus ». */
-  camHeight: number;
-  /** Rayon visuel de la balle (m) — volontairement exagéré pour la lisibilité. */
-  ballVisualRadius: number;
-  /** Grossissement de la balle par mètre de hauteur. */
-  heightSizeGain: number;
-  /** Décalage de l'ombre par mètre de hauteur (lumière oblique). */
-  shadowOffsetX: number;
-  shadowOffsetY: number;
-  /** Grossissement des joueurs à l'écran (1 = taille réelle). Purement visuel. */
-  playerScale: number;
-}
-
-export const DEFAULT_VIEW: ViewParams = {
-  camDistance: 50,
-  camHeight: 50,
-  ballVisualRadius: 0.11,
-  heightSizeGain: 0.12,
-  shadowOffsetX: 0.15,
-  shadowOffsetY: 0.1,
-  playerScale: 1.25,
-};
-
 export interface PlayParams {
   /** Portée de frappe autour du joueur, au sol (m). */
   reach: number;
@@ -338,7 +312,6 @@ export const DEFAULT_MATCH: MatchParams = { gamesToWin: 1 };
 export interface Tuning {
   physics: PhysicsParams;
   shot: ShotParams;
-  view: ViewParams;
   play: PlayParams;
   match: MatchParams;
 }
@@ -347,7 +320,6 @@ export function createDefaultTuning(): Tuning {
   return structuredClone({
     physics: DEFAULT_PHYSICS,
     shot: DEFAULT_SHOT,
-    view: DEFAULT_VIEW,
     play: DEFAULT_PLAY,
     match: DEFAULT_MATCH,
   });

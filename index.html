@@ -4,71 +4,74 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0b1622" />
-    <meta name="description" content="Padel arcade à une main : joue avec les vitres." />
+    <meta name="description" content="PÁDEL 86 — padel arcade en pixel art. Joue avec les vitres !" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Rebote" />
+    <meta name="apple-mobile-web-app-title" content="PÁDEL 86" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-    <title>Rebote</title>
+    <title>PÁDEL 86</title>
   </head>
   <body>
     <canvas id="game"></canvas>
-    <div id="vignette"></div>
     <div id="hud">
-      <button id="btn-menu" type="button" aria-label="Menu">☰</button>
-      <button id="btn-sound" type="button" aria-label="Son">🔊</button>
-      <button id="btn-replay" type="button" title="Relancer le dernier coup">↺</button>
-      <button id="btn-lob" type="button">Lob</button>
-      <button id="btn-debug" type="button">Dbg</button>
-      <button id="btn-settings" type="button" aria-label="Réglages">⚙</button>
+      <button id="btn-menu" type="button">MENU</button>
+      <button id="btn-sound" type="button">SON</button>
+      <button id="btn-replay" type="button" title="Relancer le dernier coup">REJOUER</button>
+      <button id="btn-lob" type="button">LOB</button>
+      <button id="btn-debug" type="button">DEBUG</button>
+      <button id="btn-settings" type="button">REGLAGES</button>
     </div>
-    <div id="score"></div>
-    <div id="feedback"></div>
-    <div id="hint"></div>
+    <pre id="debug" class="hidden"></pre>
 
     <div id="over" class="hidden">
       <h2 id="over-title"></h2>
       <p id="over-text"></p>
       <p id="over-style"></p>
       <div class="row">
-        <button id="btn-again" type="button" class="primary">Rejouer</button>
-        <button id="btn-over-menu" type="button">Menu</button>
+        <button id="btn-again" type="button" class="primary">REJOUER</button>
+        <button id="btn-over-menu" type="button">MENU</button>
       </div>
     </div>
 
-    <div id="home">
+    <div id="home" class="hidden">
       <div class="home-inner">
-        <h1>Rebote</h1>
-        <p class="tagline">Joue avec les vitres.</p>
+        <h1>PÁDEL 86</h1>
+        <p class="tagline">JOUE AVEC LES VITRES !</p>
 
         <div class="group">
-          <span class="label">Mode</span>
-          <div class="segmented" id="seg-control">
-            <button type="button" data-value="duo">Duo · 2 pouces</button>
-            <button type="button" data-value="solo">Classique · 1 pouce</button>
+          <span class="label">MODE</span>
+          <div class="options-list" id="seg-control">
+            <button type="button" data-value="duo">DUO  2 POUCES</button>
+            <button type="button" data-value="solo">CLASSIQUE  1 POUCE</button>
           </div>
         </div>
         <div class="group">
-          <span class="label">Adversaires</span>
-          <div class="segmented" id="seg-level">
-            <button type="button" data-value="facile">Facile</button>
-            <button type="button" data-value="moyen">Moyen</button>
-            <button type="button" data-value="fort">Fort</button>
+          <span class="label">ADVERSAIRES</span>
+          <div class="options-list" id="seg-level">
+            <button type="button" data-value="facile">LOS GUIRIS</button>
+            <button type="button" data-value="moyen">LOS PRIMOS</button>
+            <button type="button" data-value="fort">LOS REYES</button>
           </div>
         </div>
         <div class="group">
-          <span class="label">Format</span>
-          <div class="segmented" id="seg-format">
-            <button type="button" data-value="1">1 jeu · 3 min</button>
-            <button type="button" data-value="3">3 jeux · 10 min</button>
+          <span class="label">FORMAT</span>
+          <div class="options-list" id="seg-format">
+            <button type="button" data-value="1">1 JEU  3 MIN</button>
+            <button type="button" data-value="3">3 JEUX  10 MIN</button>
           </div>
         </div>
 
-        <button id="btn-play" type="button" class="primary big">Jouer</button>
-        <button id="btn-resume" type="button" class="hidden">Reprendre le match</button>
+        <div class="pair">
+          <div class="sprite" id="pair-0"></div>
+          <div class="sprite" id="pair-1"></div>
+        </div>
+        <p id="pair-names"></p>
+
+        <button id="btn-play" type="button" class="primary big">JOUER !</button>
+        <button id="btn-resume" type="button" class="hidden">REPRENDRE LE MATCH</button>
         <p id="best"></p>
 
         <div class="row options">
@@ -77,18 +80,23 @@
           <button id="opt-lob" type="button"></button>
         </div>
         <div class="row options">
-          <button id="opt-sandbox" type="button">Bac à sable</button>
-          <button id="opt-settings" type="button">Réglages</button>
+          <button id="opt-sandbox" type="button">BAC A SABLE</button>
+          <button id="opt-settings" type="button">REGLAGES</button>
           <button id="opt-debug" type="button"></button>
         </div>
-        <button id="btn-install" type="button" class="hidden">Installer l’appli</button>
-        <p id="install-hint" class="hidden">Sur iPhone : bouton Partager, puis « Sur l’écran d’accueil ».</p>
+        <button id="btn-install" type="button" class="hidden">INSTALLER L'APPLI</button>
+        <p id="install-hint" class="hidden">SUR IPHONE : BOUTON PARTAGER, PUIS "SUR L'ECRAN D'ACCUEIL".</p>
         <p class="howto" id="howto"></p>
+        <p class="copyright">© 1986 LOS PADELISTAS</p>
       </div>
     </div>
 
+    <div id="title">
+      <img id="title-img" src="./padel86/padel86-affiche-1x.png" alt="PÁDEL 86 — Joue avec les vitres ! Press start" />
+    </div>
+
     <div id="panel" class="hidden"></div>
-    <div id="rotate">Tourne ton téléphone en portrait</div>
+    <div id="rotate">TOURNE TON TELEPHONE EN PORTRAIT</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

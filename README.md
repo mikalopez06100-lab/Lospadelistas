@@ -1,17 +1,17 @@
-# Rebote
+# PÁDEL 86
 
-Jeu mobile de padel arcade, jouable d'une main, en sessions de 2 à 3 minutes.
-Le cœur du jeu : **jouer avec les vitres**.
+Jeu mobile de padel arcade en pixel art (16 couleurs, ambiance 1986). Le cœur du jeu :
+**jouer avec les vitres**. Nom de code d'origine : Rebote.
 
 **État : prototype complet, avec deux modes de jeu.**
 
-- **Duo (2 pouces, par défaut)** : tu diriges tes deux joueurs, un pouce chacun. Tu les montes
+- **Duo (2 pouces, par défaut)** : tu diriges Lola et Nico, un pouce chacun. Tu les montes
   au filet, tu volleyes, tu recules quand on te lobe, tu smashes. C'est la vraie logique du padel.
-- **Classique (1 pouce)** : ton joueur se place tout seul, tu ne fais que frapper, avec un
-  partenaire IA.
+- **Classique (1 pouce)** : Nico se place tout seul, tu ne fais que frapper, Lola est jouée par l'IA.
 
-Dans les deux cas : match en double avec service, point en or, sons, vibrations, ralenti
-« Rebote », score de style, et installation sur l'écran d'accueil du téléphone (PWA, hors ligne).
+Trois paires adverses selon le niveau : **Los Guiris** (facile), **Los Primos** (moyen),
+**Los Reyes** (fort). Match en double avec service, point en or, musique et sons du kit, ralenti
+« Rebote », score de style, et installation sur l'écran d'accueil du téléphone (PWA).
 
 Jouable en ligne : https://lospadelistas.vercel.app
 
@@ -42,6 +42,25 @@ npm run build      # build de production dans dist/
 
 Limite à connaître : l'installation en PWA exige du HTTPS. Le réseau local suffit pour jouer,
 pas pour tester l'installation : pour ça, utilise l'adresse Vercel.
+
+## Univers graphique « PÁDEL 86 »
+
+Tout l'habillage vient du kit de l'auteur ; la simulation n'en dépend pas.
+
+- **Assets** : `public/padel86/` (planche de sprites 16×24, affiche du titre, thème, 8 sons).
+- **Références** : `docs/padel86/` (brief, bible de l'univers, maquettes du menu et du jeu).
+- **Générateurs** : `tools/padel86/*.py` (palette, police, sprites, affiche, musique), pour
+  régénérer les assets après une modification.
+- **Rendu** : `src/render/p86.ts` dessine dans un canvas logique de 180×320 px (vue de dessus,
+  1 m = 12 px), agrandi à l'échelle entière maximale, sans lissage. Le HUD et les textes en jeu
+  utilisent la police bitmap 5×7 du kit (`src/render/font.ts`).
+- **Écrans HTML** (titre, menu, fin de match) : `src/style.css`, palette en variables CSS
+  `--p86-*`, police Press Start 2P embarquée (pas d'appel à Google Fonts, donc hors ligne).
+- **Son** : `src/audio/sfx.ts`. Le thème démarre au premier toucher (PRESS START), joue à plein
+  volume au menu, à −6 dB en match, et se coupe à la fin du match. Les impacts sans échantillon
+  dans le kit (sol, filet, grillage) restent synthétisés.
+- **Ressenti** : smash = arrêt sur image de 60 ms + secousse de 2 px ; vitre = flash blanc sur
+  le segment touché + « VITRE ! ».
 
 ## Comment jouer
 
@@ -124,9 +143,8 @@ Le niveau règle la force des adversaires **et** le confort de jeu (`AIDS` et `A
 
 ## Sons, vibrations, style (phase 3)
 
-- **Sons** : synthétisés en WebAudio, sans aucun fichier. Frappe, rebond au sol, vitre (le plus
-  travaillé), grillage, filet, point gagné ou perdu, fin de match. Le son se coupe avec 🔊 ; le
-  jeu reste entièrement jouable sans (tout a un retour visuel).
+- **Sons et musique** : ceux du kit PÁDEL 86. Le bouton SON coupe tout, et le réglage est
+  mémorisé. Le jeu reste entièrement jouable sans son.
 - **Vibrations** : sur tes frappes fortes et sur les points gagnés. **Android uniquement** :
   Safari sur iPhone n'implémente pas l'API Vibration, il faudra l'appli native (Capacitor) pour ça.
 - **Ralenti « Rebote »** : quand un coup gagnant touche au moins 2 vitres après son rebond, le
@@ -148,7 +166,8 @@ Ouvre https://lospadelistas.vercel.app sur le téléphone :
 Une fois installé, le jeu s'ouvre en plein écran et fonctionne hors ligne. Les mises à jour
 arrivent au lancement suivant quand le téléphone est en ligne. Le service worker
 (`public/sw.js`) n'est actif que sur le build de production, pas avec `npm run dev`.
-Les icônes sont générées par `python3 scripts/make-icons.py`.
+Les icônes sont générées à partir de l'affiche par `python3 scripts/make-icons.py`.
+Hors ligne, le jeu et ses sons fonctionnent ; seule la musique a besoin du réseau.
 
 ## Ajuster les constantes physiques
 
@@ -168,7 +187,6 @@ Deux façons de faire :
 | `shot.driveMinSpeed` / `driveMaxSpeed` | Plage de vitesse des coups tendus. À puissance max, la balle touche la vitre de fond directement (faute en phase 1). |
 | `shot.netClearance` | Marge de passage au-dessus du filet. Le jeu relève l'angle du coup tendu pour passer le filet. |
 | `shot.lobThreshold` / `hookCurvature` | Seuil de déclenchement du lob dans chacun des deux modes. |
-| `view.camDistance` / `camHeight` | Inclinaison et force de la perspective. |
 | `play.moveSpeed` / `play.reach` | Vitesse du placement automatique et portée de frappe : c'est ce qui rend un coup adverse imprenable ou non. |
 | `play.maxTimingAimErrorDeg` / `maxTimingPowerError` | Pénalité d'un mauvais timing. |
 | `AI_LEVELS` | Les trois niveaux d'IA (non réglables dans le panneau ⚙). |
@@ -199,11 +217,14 @@ src/
     rng.ts                aléatoire à graine (jamais Math.random dans core/)
     sandbox.ts            état du bac à sable (phase 0)
   render/      Canvas 2D : lit l'état sans jamais le modifier
-    player.ts             joueurs dessinés en squelette 3D projeté : course, armé, frappe
+    p86.ts                rendu pixel 180×320 : terrain, sprites, balle, HUD, effets
+    font.ts               police bitmap 5×7 du kit
   input/       touch.ts (un swipe, mode classique) et duoTouch.ts (deux pouces : stick + frappe)
-  audio/       sons synthétisés (WebAudio) et vibrations
+  audio/       sons et musique du kit, vibrations
   app/         panneau de réglages
-public/        manifest, service worker et icônes de la PWA
+public/        manifest, service worker, icônes, et le kit PÁDEL 86 (padel86/)
+docs/padel86/  brief, bible de l'univers et maquettes de référence
+tools/padel86/ générateurs Python des assets
 tests/         vitest
 scripts/       joueur-robot et simulation d'équilibrage (npm run sim)
 ```
@@ -211,7 +232,7 @@ scripts/       joueur-robot et simulation d'équilibrage (npm run sim)
 Choix techniques :
 
 - **Canvas 2D sans moteur de jeu.** La physique 2D + hauteur est faite maison, donc Phaser
-  n'apporterait guère plus qu'un 1 Mo de JS de plus. Le bundle actuel fait environ 10 Ko gzippé.
+  n'apporterait guère plus qu'un 1 Mo de JS de plus. Le code du jeu pèse environ 25 Ko gzippé.
 - **Pas fixe de 120 Hz.** Le rendu suit la fréquence de l'écran et interpole entre deux pas. La
   simulation ne dépend donc pas du framerate, ce qu'il faudra pour rejouer des « fantômes ».
 - **Collisions analytiques.** Toutes les surfaces sont des plans alignés sur les axes, donc

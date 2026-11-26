@@ -1,42 +1,33 @@
-"""Génère les icônes de la PWA dans public/icons/. Lancer : python3 scripts/make-icons.py"""
+"""Génère les icônes de la PWA dans public/icons/ à partir de l'affiche PÁDEL 86.
+Lancer : python3 scripts/make-icons.py"""
 from pathlib import Path
-from PIL import Image, ImageDraw
+from PIL import Image
 
-OUT = Path(__file__).resolve().parent.parent / "public" / "icons"
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / "public" / "icons"
 OUT.mkdir(parents=True, exist_ok=True)
-S = 2048  # dessin en grand, réduit ensuite pour l'anticrénelage
+NUIT = (11, 22, 34)
+
+# Carré du haut de l'affiche 1x (titre, « 86 », palmiers) : 180×180 px logiques.
+poster = Image.open(ROOT / "public" / "padel86" / "padel86-affiche-1x.png").convert("RGB")
+square = poster.crop((0, 6, 180, 186))
 
 
-def draw() -> Image.Image:
-    im = Image.new("RGB", (S, S), "#0b1622")
-    d = ImageDraw.Draw(im)
-    # Terrain en perspective. Tout le motif tient dans les 80 % centraux (zone sûre des icônes masquables).
-    court = [(0.24 * S, 0.30 * S), (0.76 * S, 0.30 * S), (0.86 * S, 0.84 * S), (0.14 * S, 0.84 * S)]
-    d.polygon(court, fill="#1f5fa8")
-    # Vitre de fond.
-    glass = [(0.24 * S, 0.14 * S), (0.76 * S, 0.14 * S), (0.76 * S, 0.30 * S), (0.24 * S, 0.30 * S)]
-    d.polygon(glass, fill="#1b3350")
-    w = int(S * 0.012)
-    d.line(glass + [glass[0]], fill="#cdeeff", width=w, joint="curve")
-    for fx in (0.41, 0.59):
-        d.line([(fx * S, 0.14 * S), (fx * S, 0.30 * S)], fill="#7fa9c4", width=w // 2)
-    d.line(court + [court[0]], fill="#ffffff", width=w, joint="curve")
-    # Filet.
-    d.line([(0.185 * S, 0.60 * S), (0.815 * S, 0.60 * S)], fill="#ffffff", width=int(w * 1.6))
-    # Trajectoire : rebond au sol puis sur la vitre.
-    pts = [(0.30 * S, 0.74 * S), (0.44 * S, 0.47 * S), (0.56 * S, 0.40 * S), (0.60 * S, 0.24 * S), (0.66 * S, 0.40 * S)]
-    for a, b in zip(pts, pts[1:]):
-        d.line([a, b], fill="#e4f23a", width=int(w * 0.9))
-    # Ombre et balle.
-    d.ellipse([0.62 * S, 0.50 * S, 0.76 * S, 0.55 * S], fill="#153f73")
-    r = 0.085 * S
-    cx, cy = 0.69 * S, 0.40 * S
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill="#e4f23a", outline="#2a3300", width=w // 2)
-    d.ellipse([cx - r * 0.55, cy - r * 0.6, cx - r * 0.05, cy - r * 0.1], fill="#f6ffb0")
+def icon(size: int, inner: int) -> Image.Image:
+    """Agrandissement entier au plus proche voisin (pixels nets), centré sur fond nuit."""
+    k = max(1, inner // 180)
+    art = square.resize((180 * k, 180 * k), Image.NEAREST)
+    im = Image.new("RGB", (size, size), NUIT)
+    im.paste(art, ((size - art.width) // 2, (size - art.height) // 2))
     return im
 
 
-base = draw()
-for name, size in (("icon-192.png", 192), ("icon-512.png", 512), ("apple-touch-icon.png", 180)):
-    base.resize((size, size), Image.LANCZOS).save(OUT / name, optimize=True)
+for name, size, inner in (
+    ("icon-192.png", 192, 180),
+    ("icon-512.png", 512, 512),
+    # Icône « masquable » : le motif tient dans les 80 % centraux, le reste peut être rogné.
+    ("icon-maskable-512.png", 512, 400),
+    ("apple-touch-icon.png", 180, 180),
+):
+    icon(size, inner).save(OUT / name, optimize=True)
     print("écrit", OUT / name)
