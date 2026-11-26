@@ -119,6 +119,22 @@ function pushInput(input: MatchInput): void {
   recording.inputs.push(input);
 }
 
+/**
+ * Duo : chaque moitié de l'écran dirige le joueur qui tient CE côté du terrain pour le point
+ * en cours (le serveur change de côté à chaque point). `side` : 1 = gauche, 0 = droite.
+ */
+function humanOnSide(side: number): number {
+  const wantLeft = side === 1;
+  const p = game.players.find((pl) => pl.isHuman && pl.zone.xMin < court.width / 2 === wantLeft);
+  return p ? p.id : side;
+}
+
+/** Nom du joueur de ta paire qui tient le côté gauche (true) ou droit (false) sur ce point. */
+function nameOnSide(left: boolean): string {
+  const p = game.players.find((pl) => pl.team === 0 && pl.zone.xMin < court.width / 2 === left);
+  return p ? NAMES[p.id] : '';
+}
+
 /** Est-ce à un joueur humain de servir, là, maintenant ? */
 function humanServing(): boolean {
   return screen === 'match' && game.phase === 'serve' && game.players[game.serverId].isHuman;
@@ -147,10 +163,11 @@ const duo = attachDuo(canvas, {
   onMove: (_playerId, swipe) => {
     if (isDuoPlaying() && humanServing()) serveDrag = serveIntentFromDrag(swipe, tuning.shot);
   },
-  onStick: (playerId, stick) => {
-    if (isDuoPlaying()) pushInput({ tick: game.tick, playerId, stick });
+  onStick: (side, stick) => {
+    if (isDuoPlaying()) pushInput({ tick: game.tick, playerId: humanOnSide(side), stick });
   },
-  onRelease: (playerId, swipe, quick) => {
+  onRelease: (side, swipe, quick) => {
+    const playerId = humanOnSide(side);
     if (!isDuoPlaying()) return;
     // Au service : un trait vers le haut, n'importe où sur l'écran, sans limite de durée.
     if (humanServing()) {
@@ -708,7 +725,14 @@ function scene(alpha: number, slow: boolean, now: number): Scene {
   }));
   const bottom: Bottom = hint
     ? { kind: 'hint', text: hint }
-    : { kind: 'thumbs', left: 'LOLA', right: 'NICO', leftIsAi: game.mode === 'solo', style: game.style };
+    : {
+        kind: 'thumbs',
+        left: nameOnSide(true),
+        right: nameOnSide(false),
+        leftIsAi: !game.players.some((pl) => pl.isHuman && pl.zone.xMin < court.width / 2),
+        rightIsAi: !game.players.some((pl) => pl.isHuman && pl.zone.xMin >= court.width / 2),
+        style: game.style,
+      };
   return {
     ...common,
     glow: slow,

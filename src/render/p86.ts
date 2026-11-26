@@ -77,7 +77,7 @@ export interface Hud {
 
 export type Bottom =
   | { kind: 'hint'; text: string }
-  | { kind: 'thumbs'; left: string; right: string; leftIsAi: boolean; style: number }
+  | { kind: 'thumbs'; left: string; right: string; leftIsAi: boolean; rightIsAi: boolean; style: number }
   | null;
 
 export interface Banner {
@@ -661,7 +661,7 @@ export class P86View {
       this.text(label, x + 28, top + 6, dim ? 'L' : 'C', 1, null, 0.5);
     };
     cell(6, bottom.left, bottom.leftIsAi);
-    cell(this.lw - 62, bottom.right, false);
+    cell(this.lw - 62, bottom.right, bottom.rightIsAi);
     this.text('STYLE', mid, top + 1, 'C', 1, 'K', 0.5);
     this.text(String(bottom.style), mid, top + 10, 'Y', 1, 'K', 0.5);
   }

@@ -135,6 +135,10 @@ const POINT_PAUSE_TICKS = 160;
 const GAME_PAUSE_TICKS = 260;
 const FAULT_PAUSE_TICKS = 90;
 const CENTER_BAND = 0.8;
+/** Duo : débordement toléré au-delà de la ligne centrale pour l'aide latérale (m). */
+const LANE_OVERLAP = 0.5;
+/** Duo : distance minimale à la ligne centrale pour un joueur au repos (m). */
+const LANE_MARGIN = 1.2;
 const SERVE_CONTACT_Z = 0.8;
 
 /** Profondeur (depuis sa vitre de fond) d'une équipe IA montée au filet. */
@@ -246,6 +250,14 @@ function setupServe(m: Match, court: CourtGeometry): void {
     } else {
       p.pos = { ...p.home };
     }
+  }
+  // Le serveur change de côté à chaque point, et son partenaire prend l'autre : pour ce point,
+  // chacun garde le couloir où il se trouve. Personne ne retraverse le terrain après le service.
+  const half = court.width / 2;
+  for (const p of m.players) {
+    if (p.team !== m.servingTeam) continue;
+    p.zone = p.pos.x < half ? { xMin: 0, xMax: half } : { xMin: half, xMax: court.width };
+    p.home.x = (p.zone.xMin + p.zone.xMax) / 2;
   }
 }
 
@@ -515,7 +527,7 @@ function moveManual(m: Match, p: MatchPlayer, t: Tuning, dt: number, court: Cour
     vy = p.stick.y * speed;
   } else if (t2 && t2.kind === 'glass' && m.phase === 'rally' && AIDS[m.aiLevel].glassAutoPlace) {
     // Aide du niveau : la balle se jouera après ta vitre, le joueur va se placer tout seul.
-    const dx = t2.pos.x - p.pos.x;
+    const dx = clamp(t2.pos.x, p.zone.xMin - CENTER_BAND, p.zone.xMax + CENTER_BAND) - p.pos.x;
     const dy = t2.pos.y - p.pos.y;
     const d = Math.hypot(dx, dy);
     if (d > 0.05) {
@@ -523,10 +535,19 @@ function moveManual(m: Match, p: MatchPlayer, t: Tuning, dt: number, court: Cour
       vx = (dx / d) * v;
       vy = (dy / d) * v;
     }
-  } else if (p.assistX !== null && t.play.assist > 0 && m.phase === 'rally') {
-    const dx = p.assistX - p.pos.x;
+  } else if (p.assistX !== null && t.play.assist > 0 && m.phase === 'rally' && m.assigned[p.team] === p.id) {
+    // Aide latérale : seul le joueur à qui revient la balle se décale, et il reste de son côté
+    // (au plus 50 cm au-delà de la ligne centrale).
+    const goal = clamp(p.assistX, p.zone.xMin - LANE_OVERLAP, p.zone.xMax + LANE_OVERLAP);
     const max = speed * t.play.assist;
-    vx = clamp(dx / dt, -max, max);
+    vx = clamp((goal - p.pos.x) / dt, -max, max);
+  } else if (t.play.assist > 0) {
+    // Chacun son couloir : un joueur laissé trop près du centre s'en écarte tout seul, pour que
+    // la paire ne finisse pas collée au milieu. Sa profondeur ne bouge pas.
+    const mid = court.width / 2;
+    const goal = p.zone.xMin < mid ? Math.min(p.pos.x, mid - LANE_MARGIN) : Math.max(p.pos.x, mid + LANE_MARGIN);
+    const max = speed * t.play.assist * 0.6;
+    vx = clamp((goal - p.pos.x) / dt, -max, max);
   }
   p.pos.x = clamp(p.pos.x + vx * dt, 0.4, court.width - 0.4);
   p.pos.y = clamp(p.pos.y + vy * dt, 0.4, court.netY - 0.8);

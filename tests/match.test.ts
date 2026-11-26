@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { playBotMatch } from '../scripts/bot';
+import { Bot, playBotMatch } from '../scripts/bot';
 import { COURT, FIXED_DT, createDefaultTuning } from '../src/core/constants';
 import { createMatch, humanServeShot, receiverFor, serviceBox, tickMatch, type MatchEvent } from '../src/core/play/match';
 import { predict } from '../src/core/physics/predict';
@@ -116,5 +116,25 @@ describe('match en double', () => {
       expect(aiKinds.has('drop')).toBe(false);
       for (const p of match.players.filter((p) => p.team === 1)) expect(p.home.y).toBeGreaterThan(COURT.netY + 5);
     });
+  });
+
+  it('Duo : sans stick, tes deux joueurs restent chacun de leur côté', () => {
+    // Niveau facile = toutes les aides au placement actives : c'est le cas le plus exposé.
+    const m = createMatch(12, 'facile', COURT, 3, 'duo');
+    const bot = new Bot(5, 60);
+    const events: MatchEvent[] = [];
+    let closest = Infinity;
+    while (m.tick < 120 * 90 && m.phase !== 'over') {
+      // Le robot ne fait que frapper : aucun déplacement au stick, tout vient des aides.
+      const inputs = bot.inputs(m, COURT, tuning).filter((i) => 'intent' in i);
+      tickMatch(m, inputs, tuning, COURT, events);
+      // Le couloir de chacun est fixé pour le point (le serveur change de côté à chaque point).
+      const left = m.players.find((p) => p.team === 0 && p.zone.xMin === 0)!;
+      const right = m.players.find((p) => p.team === 0 && p.zone.xMin > 0)!;
+      if (m.phase === 'rally') closest = Math.min(closest, right.pos.x - left.pos.x);
+      expect(left.pos.x).toBeLessThanOrEqual(COURT.width / 2 + 0.8 + 1e-9);
+      expect(right.pos.x).toBeGreaterThanOrEqual(COURT.width / 2 - 0.8 - 1e-9);
+    }
+    expect(closest).toBeGreaterThan(1);
   });
 });
