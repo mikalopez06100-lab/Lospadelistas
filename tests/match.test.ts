@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { playBotMatch } from '../scripts/bot';
-import { COURT, createDefaultTuning } from '../src/core/constants';
-import { createMatch, receiverFor, serviceBox, tickMatch, type MatchEvent } from '../src/core/play/match';
+import { COURT, FIXED_DT, createDefaultTuning } from '../src/core/constants';
+import { createMatch, humanServeShot, receiverFor, serviceBox, tickMatch, type MatchEvent } from '../src/core/play/match';
+import { predict } from '../src/core/physics/predict';
+import { createBall } from '../src/core/physics/step';
 import { replay } from '../src/core/play/replay';
 
 const tuning = createDefaultTuning();
@@ -63,10 +65,10 @@ describe('match en double', () => {
       expect(b.players.map((p) => p.pos)).toEqual(a.match.players.map((p) => p.pos));
     });
 
-    it('sans stick ni aide, tes joueurs ne bougent pas : la profondeur est ta décision', () => {
+    it('sans stick ni aide (niveau fort), tes joueurs ne bougent pas : la profondeur est ta décision', () => {
       const t = createDefaultTuning();
       t.play.assist = 0;
-      const m = createMatch(4, 'facile', COURT, 3, 'duo');
+      const m = createMatch(4, 'fort', COURT, 3, 'duo');
       const before = m.players.slice(0, 2).map((p) => ({ ...p.pos }));
       const events: MatchEvent[] = [];
       // Un service, puis on laisse filer : aucun déplacement automatique.
@@ -85,6 +87,34 @@ describe('match en double', () => {
       expect(m.players[1].pos.y).toBeGreaterThan(y0 + 0.5);
       for (let i = 0; i < 120 && m.phase === 'rally'; i++) tickMatch(m, [], tuning, COURT, events);
       expect(m.players[1].pos.y).toBeLessThanOrEqual(COURT.netY - 0.8);
+    });
+  });
+
+  describe('aides selon le niveau', () => {
+    const serveIntent = (aim: number) => ({ kind: 'drive' as const, power: 0.5, aim, swipeSpeed: 0, curvature: 0 });
+    const lands = (level: 'facile' | 'fort', aim: number) => {
+      const m = createMatch(1, level, COURT, 1, 'duo');
+      const { origin, vel, box } = humanServeShot(m, serveIntent(aim), tuning, COURT);
+      const first = predict(createBall(origin, vel), tuning.physics, COURT, FIXED_DT * tuning.physics.timeScale, 4).contacts[0];
+      return first.surface === 'ground' && first.pos.x >= box.xMin && first.pos.x <= box.xMax && first.pos.y >= box.yMin && first.pos.y <= box.yMax;
+    };
+
+    it('en facile, un service mal visé retombe quand même dans le carré ; en fort, non', () => {
+      expect(lands('facile', 0)).toBe(true);
+      expect(lands('facile', 0.8)).toBe(true);
+      expect(lands('facile', -0.8)).toBe(true);
+      expect(lands('fort', 0)).toBe(true);
+      expect(lands('fort', -0.8)).toBe(false);
+    });
+
+    it('en facile les adversaires ne smashent pas et ne montent pas au filet', () => {
+      const t = createDefaultTuning();
+      t.match.gamesToWin = 2;
+      const { events, match } = playBotMatch(3, 'facile', 90, t, COURT, 20 * 60, 'duo', 'filet');
+      const aiKinds = new Set(events.filter((e) => e.type === 'hit' && e.team === 1).map((e) => (e as { kind: string }).kind));
+      expect(aiKinds.has('smash')).toBe(false);
+      expect(aiKinds.has('drop')).toBe(false);
+      for (const p of match.players.filter((p) => p.team === 1)) expect(p.home.y).toBeGreaterThan(COURT.netY + 5);
     });
   });
 });

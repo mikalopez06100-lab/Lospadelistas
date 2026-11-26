@@ -20,6 +20,8 @@ export interface DuoOptions {
   /** Course du stick en px : au-delà, vitesse maximale. */
   radiusPx: number;
   onStick: (playerId: number, stick: Vec2 | null) => void;
+  /** Doigt en mouvement : le geste tel qu'il est pour l'instant (sert au trait de visée du service). */
+  onMove?: (playerId: number, swipe: Swipe) => void;
   /** Doigt relevé. `quick` = geste assez bref pour être une frappe. */
   onRelease: (playerId: number, swipe: Swipe, quick: boolean) => void;
 }
@@ -43,7 +45,7 @@ interface Tracked extends DuoTouch {
 }
 
 /** Sous cette vitesse (px/s), le pouce est considéré comme posé : c'est un déplacement, pas une frappe. */
-const SETTLED_SPEED = 140;
+const SETTLED_SPEED = 220;
 
 export function attachDuo(el: HTMLElement, o: DuoOptions): { touches: () => readonly DuoTouch[] } {
   const tracked = new Map<number, Tracked>();
@@ -105,7 +107,9 @@ export function attachDuo(el: HTMLElement, o: DuoOptions): { touches: () => read
     t.x = s.x;
     t.y = s.y;
     if (t.points.length < 64) t.points.push(s);
+    else t.points[63] = s;
     updateStick(t, s.t);
+    o.onMove?.(t.playerId, { points: t.points, viewportHeight: el.clientHeight });
     e.preventDefault();
   });
 

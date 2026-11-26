@@ -1,4 +1,4 @@
-import { AI_LEVELS, FIXED_DT, PARTNER_LEVEL, type AiLevel, type AiParams, type CourtGeometry, type Tuning } from '../constants';
+import { AIDS, AI_LEVELS, FIXED_DT, PARTNER_LEVEL, type AiLevel, type AiParams, type CourtGeometry, type Tuning } from '../constants';
 import { clamp, copyV3, DEG, lerp, v3, type Vec2, type Vec3 } from '../math/vec3';
 import { createBall, stepBall, type BallState, type ContactEvent } from '../physics/step';
 import {
@@ -254,7 +254,12 @@ export function isHittable(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeom
   if (!b || m.phase !== 'rally' || b.status === 'stopped' || b.status === 'out') return false;
   if (!canHit(m.rally, p.team, b.pos.y, court, p.id)) return false;
   if (b.pos.z < t.play.minContactZ || b.pos.z > maxContactZ(m, t)) return false;
-  return Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y) <= t.play.reach;
+  return Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y) <= t.play.reach + glassReachBonus(m, p);
+}
+
+/** Aide du niveau : en Duo, une balle sortie de ta vitre se joue d'un peu plus loin. */
+function glassReachBonus(m: Match, p: MatchPlayer): number {
+  return p.manual && m.glassSinceHit > 0 ? AIDS[m.aiLevel].glassReachBonus : 0;
 }
 
 /** En Duo, les balles hautes se jouent au-dessus de la tête (smash) ; en solo, non. */
@@ -322,7 +327,12 @@ export function tickMatch(m: Match, inputs: readonly MatchInput[], t: Tuning, co
   m.tick++;
 }
 
-function serve(m: Match, t: Tuning, court: CourtGeometry, out: MatchEvent[], intent: ShotIntent | null): void {
+/**
+ * Trajectoire du service d'un joueur humain pour un geste donné. Sert au jeu ET au trait
+ * pointillé de visée : ce que tu vois est exactement ce qui partira.
+ * Geste droit = centre du carré ; la direction décale le point visé, la puissance la profondeur.
+ */
+export function humanServeShot(m: Match, intent: ShotIntent, t: Tuning, court: CourtGeometry): { origin: Vec3; vel: Vec3; box: Box } {
   const server = m.players[m.serverId];
   const receiving = other(m.servingTeam);
   const box = serviceBox(receiving, m.serveSide, court);
@@ -331,19 +341,33 @@ function serve(m: Match, t: Tuning, court: CourtGeometry, out: MatchEvent[], int
   const nearY = receiving === 1 ? box.yMin : box.yMax;
   const farY = receiving === 1 ? box.yMax : box.yMin;
   const cx = (box.xMin + box.xMax) / 2;
-  let target: Vec2;
+  const depth = lerp(nearY + forward * 1.5, farY - forward * 0.5, intent.power);
+  const target = { x: cx + Math.tan(intent.aim) * Math.abs(depth - origin.y) * 0.5, y: depth };
+  if (AIDS[m.aiLevel].serveInBox) target.x = clamp(target.x, box.xMin + 0.7, box.xMax - 0.7);
+  return { origin, vel: aimAt(origin, target, 'drive', forward, t.shot, t.physics, court), box };
+}
+
+function serve(m: Match, t: Tuning, court: CourtGeometry, out: MatchEvent[], intent: ShotIntent | null): void {
+  const server = m.players[m.serverId];
+  const receiving = other(m.servingTeam);
+  const box = serviceBox(receiving, m.serveSide, court);
+  let origin: Vec3;
+  let vel: Vec3;
   if (intent) {
-    // Swipe droit = centre du carré. La direction décale le point visé, la puissance la profondeur.
-    const depth = lerp(nearY + forward * 1.5, farY - forward * 0.5, intent.power);
-    target = { x: cx + Math.tan(intent.aim) * Math.abs(depth - origin.y) * 0.5, y: depth };
+    ({ origin, vel } = humanServeShot(m, intent, t, court));
   } else {
     const ai = server.ai;
-    target = {
+    const forward = m.servingTeam === 0 ? 1 : -1;
+    const nearY = receiving === 1 ? box.yMin : box.yMax;
+    const farY = receiving === 1 ? box.yMax : box.yMin;
+    origin = { x: server.pos.x, y: server.pos.y, z: SERVE_CONTACT_Z };
+    const target = {
       x: range(m.rng, box.xMin + 0.8, box.xMax - 0.8) + gaussian(m.rng, ai.serveError),
       y: lerp(nearY, farY, range(m.rng, 0.45, 0.85)) + gaussian(m.rng, ai.serveError),
     };
+    vel = aimAt(origin, target, 'drive', forward, t.shot, t.physics, court);
   }
-  m.ball = createBall(origin, aimAt(origin, target, 'drive', forward, t.shot, t.physics, court));
+  m.ball = createBall(origin, vel);
   copyV3(m.prevPos, origin);
   m.rally = createRally();
   startServe(m.rally, m.servingTeam, box, receiverFor(m, court));
@@ -428,7 +452,7 @@ function assign(m: Match, team: Team, t: Tuning, court: CourtGeometry, dt: numbe
       ? findWindows(ball, m.rally, team, p.id, t.physics, t.play, court, dt, maxSteps, zMax)
       : (shared ??= findWindows(ball, m.rally, team, p.id, t.physics, t.play, court, dt, maxSteps, zMax));
     const mine = windows.filter((w) => w.pos.x >= p.zone.xMin - CENTER_BAND && w.pos.x <= p.zone.xMax + CENTER_BAND);
-    const speed = p.isHuman ? t.play.moveSpeed : p.ai.moveSpeed;
+    const speed = p.manual ? t.play.duoMoveSpeed : p.isHuman ? t.play.moveSpeed : p.ai.moveSpeed;
     const reaction = p.isHuman ? 0 : p.ai.reaction;
     if (p.manual) p.assistX = assistAtDepth(mine, p, t);
     // Occasion de smash pour l'IA : une balle haute, avant le rebond, près du filet.
@@ -482,12 +506,23 @@ function assistAtDepth(windows: ContactWindow[], p: MatchPlayer, t: Tuning): num
 
 function moveManual(m: Match, p: MatchPlayer, t: Tuning, dt: number, court: CourtGeometry): void {
   if (m.phase === 'serve') return;
-  const speed = t.play.moveSpeed;
+  const speed = t.play.duoMoveSpeed;
   let vx = 0;
   let vy = 0;
+  const t2 = p.target;
   if (p.stick) {
     vx = p.stick.x * speed;
     vy = p.stick.y * speed;
+  } else if (t2 && t2.kind === 'glass' && m.phase === 'rally' && AIDS[m.aiLevel].glassAutoPlace) {
+    // Aide du niveau : la balle se jouera après ta vitre, le joueur va se placer tout seul.
+    const dx = t2.pos.x - p.pos.x;
+    const dy = t2.pos.y - p.pos.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 0.05) {
+      const v = Math.min(speed, d / dt);
+      vx = (dx / d) * v;
+      vy = (dy / d) * v;
+    }
   } else if (p.assistX !== null && t.play.assist > 0 && m.phase === 'rally') {
     const dx = p.assistX - p.pos.x;
     const max = speed * t.play.assist;
@@ -535,8 +570,14 @@ function hitHuman(m: Match, p: MatchPlayer, intent: ShotIntent, t: Tuning, court
   const aimErr = clamp(gaussian(m.rng, 0.5) * spread * maxAim, -maxAim, maxAim);
   const powerErr = gaussian(m.rng, 0.5) * spread * t.play.maxTimingPowerError;
   // Geste vers le bas : smash si la balle est assez haute, sinon amortie.
-  const kind: ShotKind = intent.kind === 'smash' && ball.pos.z < t.play.smashMinZ ? 'drop' : intent.kind;
-  const actual: ShotIntent = { ...intent, kind, aim: intent.aim + aimErr, power: clamp(intent.power + powerErr, 0, 1) };
+  let kind: ShotKind = intent.kind === 'smash' && ball.pos.z < t.play.smashMinZ ? 'drop' : intent.kind;
+  let actual: ShotIntent = { ...intent, kind, aim: intent.aim + aimErr, power: clamp(intent.power + powerErr, 0, 1) };
+  // Aide du niveau : en sortie de vitre, un geste vers le haut donne un lob propre, la réponse
+  // classique du padel dans cette situation. Le geste reste à faire, mais il pardonne.
+  if (p.manual && m.glassSinceHit > 0 && AIDS[m.aiLevel].glassSafeLob && (kind === 'drive' || kind === 'lob')) {
+    kind = 'lob';
+    actual = { ...intent, kind, power: 0.45 };
+  }
   const vel = shotVelocity(actual, ball.pos, t.shot, t.physics, court, 1);
   let timing: Timing = quality >= 0.85 ? 'parfait' : 'juste';
   // En Duo c'est toi qui te places : « trop tôt / trop tard » n'a de sens qu'avec le placement automatique.
@@ -558,7 +599,7 @@ function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: M
   const atNet = Math.abs(ball.pos.y - court.netY) < 4.5 && ball.pos.z >= 0.5;
   let kind: ShotKind;
   let target: Vec2;
-  if (m.mode === 'duo' && ball.pos.z >= t.play.smashMinZ + 0.2 && Math.abs(ball.pos.y - court.netY) < 7) {
+  if (m.mode === 'duo' && ai.attackChance > 0 && ball.pos.z >= t.play.smashMinZ + 0.2 && Math.abs(ball.pos.y - court.netY) < 7) {
     // Balle haute à portée : smash vers le côté le plus dégagé.
     const nearest = opponents.reduce((a, o) => (Math.abs(o.pos.x - ball.pos.x) < Math.abs(a.pos.x - ball.pos.x) ? o : a));
     const tx = clamp((nearest.pos.x < court.width / 2 ? court.width - 2 : 2) + gaussian(m.rng, ai.aimError), 0.5, court.width - 0.5);
@@ -601,7 +642,9 @@ function hitAi(m: Match, p: MatchPlayer, t: Tuning, court: CourtGeometry, out: M
       y: court.netY + forward * depth + gaussian(m.rng, ai.aimError),
     };
   }
-  const vel = aimAt(ball.pos, target, kind, forward, t.shot, t.physics, court);
+  // Selon le niveau, l'IA joue plus ou moins bombé (marge au-dessus du filet).
+  const shot = ai.loft > 0 ? { ...t.shot, netClearance: t.shot.netClearance + ai.loft } : t.shot;
+  const vel = aimAt(ball.pos, target, kind, forward, shot, t.physics, court);
   if (nextFloat(m.rng) < ai.errorChance) spoil(vel, ball.pos, m.rng, t, court);
   launch(m, p, vel, out, kind, 1, 'juste', 0.5, t, court);
 }
@@ -618,7 +661,7 @@ function updateAiHomes(m: Match, hitter: MatchPlayer, kind: ShotKind, court: Cou
   let depth: number | null = null;
   if (hitter.team === aiTeam) {
     const wantsNet = kind === 'lob' || humansFromNet > 5.5;
-    if (wantsNet && nextFloat(m.rng) < ais[0].ai.attackChance + 0.3) depth = NET_HOME_DEPTH;
+    if (wantsNet && nextFloat(m.rng) < ais[0].ai.netChance) depth = NET_HOME_DEPTH;
     else if (humansFromNet < 4) depth = ais[0].ai.homeDepth;
   } else if (kind === 'lob') {
     depth = ais[0].ai.homeDepth;

@@ -3,9 +3,10 @@ import { clamp, horizontalSpeed, lengthV3, lerp, type Vec3 } from '../core/math/
 import { netHeightAt } from '../core/physics/court';
 import { predict, type Prediction } from '../core/physics/predict';
 import { createBall, type BallState, type ContactEvent } from '../core/physics/step';
+import type { Box } from '../core/rules/rally';
 import type { ShotIntent } from '../core/shot/swipeToShot';
 import { drawNearGlass } from './courtLayer';
-import { groundCircle, line3 } from './draw';
+import { groundCircle, line3, pathPoly } from './draw';
 import type { Fx } from './fx';
 import { drawPlayer, type PlayerPose } from './player';
 import type { Projection, ScreenPoint } from './projection';
@@ -44,6 +45,8 @@ export interface SceneInput {
   glow: boolean;
   /** Point de chute prévu de la balle dans ton camp (repère de placement), ou null. */
   landing: Vec3 | null;
+  /** Service : carré visé, et trajectoire du service tel qu'il partirait maintenant. */
+  serveAim: { box: Box; origin: Vec3; vel: Vec3; active: boolean } | null;
 }
 
 const tmp: ScreenPoint = { x: 0, y: 0 };
@@ -77,6 +80,7 @@ export function drawScene(
 
   if (prediction) drawPrediction(ctx, proj, prediction, 'rgba(255, 235, 80, 0.85)');
   if (previewPrediction) drawPrediction(ctx, proj, previewPrediction, 'rgba(255, 140, 60, 0.9)');
+  if (s.serveAim) drawServeAim(ctx, proj, s);
   if (s.landing) {
     const pulse = 0.6 + 0.4 * Math.sin(s.tick * 0.25);
     ctx.strokeStyle = `rgba(228, 242, 58, ${0.85 * pulse})`;
@@ -107,6 +111,39 @@ export function drawScene(
   fx.draw(ctx, proj, court);
 
   if (s.debug) drawDebugText(ctx, s, prediction, heightCss);
+}
+
+/** Aide à la visée du service : carré visé surligné, trajectoire en pointillés, point de chute. */
+function drawServeAim(ctx: CanvasRenderingContext2D, proj: Projection, s: SceneInput): void {
+  const { box, origin, vel, active } = s.serveAim!;
+  ctx.fillStyle = 'rgba(228, 242, 58, 0.14)';
+  pathPoly(ctx, proj, [[box.xMin, box.yMin, 0], [box.xMax, box.yMin, 0], [box.xMax, box.yMax, 0], [box.xMin, box.yMax, 0]]);
+  ctx.fill();
+  const pred = predict(createBall(origin, vel), s.tuning.physics, s.court, FIXED_DT * s.tuning.physics.timeScale, 3, 2);
+  const first = pred.contacts[0];
+  const good = !!first && first.surface === 'ground' && first.pos.x >= box.xMin && first.pos.x <= box.xMax && first.pos.y >= box.yMin && first.pos.y <= box.yMax;
+  const color = good ? '255, 255, 255' : '255, 120, 100';
+  const alpha = active ? 0.95 : 0.45;
+  ctx.beginPath();
+  for (let i = 0; i < pred.points.length; i++) {
+    const p = pred.points[i];
+    proj.toScreen(p.x, p.y, p.z, tmp);
+    if (i === 0) ctx.moveTo(tmp.x, tmp.y);
+    else ctx.lineTo(tmp.x, tmp.y);
+    // On s'arrête au premier impact : c'est le point de chute qui compte.
+    if (first && Math.abs(p.y - origin.y) >= Math.abs(first.pos.y - origin.y)) break;
+  }
+  ctx.setLineDash([6, 6]);
+  ctx.strokeStyle = `rgba(${color}, ${alpha})`;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if (first) {
+    ctx.strokeStyle = `rgba(${color}, ${alpha})`;
+    ctx.lineWidth = 2.5;
+    groundCircle(ctx, proj, first.pos.x, first.pos.y, 0.4);
+    ctx.stroke();
+  }
 }
 
 /** Traînée : la vitesse de la balle se lit d'un coup d'œil, même quand elle est petite au fond. */

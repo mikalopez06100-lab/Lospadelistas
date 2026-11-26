@@ -53,6 +53,7 @@ const SECTIONS: { title: string; sliders: Slider[] }[] = [
       { path: 'play.maxTimingPowerError', label: 'Erreur de puissance max', min: 0, max: 0.6, step: 0.01 },
       { path: 'play.idealContactZ', label: 'Hauteur de frappe idéale (m)', min: 0.4, max: 1.8, step: 0.05 },
       { path: 'play.volleyPenalty', label: 'Réticence à la volée', min: 0, max: 2, step: 0.05 },
+      { path: 'play.duoMoveSpeed', label: 'Duo — vitesse de tes joueurs (m/s)', min: 3, max: 10, step: 0.1 },
       { path: 'play.assist', label: 'Duo — aide latérale (0 = aucune)', min: 0, max: 1, step: 0.05 },
       { path: 'play.overheadZ', label: 'Duo — hauteur max au-dessus de la tête (m)', min: 2.2, max: 3.2, step: 0.05 },
       { path: 'play.smashMinZ', label: 'Duo — hauteur min pour smasher (m)', min: 1.2, max: 2.2, step: 0.05 },

@@ -79,8 +79,8 @@ export const DEFAULT_PHYSICS: PhysicsParams = {
   airDrag: 0.25,
   ballRadius: 0.033,
   // Balle de padel lâchée de 2,54 m : remonte à ~1,40 m → restitution ≈ 0,74.
-  ground: { restitution: 0.75, tangentialKeep: 0.8 },
-  glass: { restitution: 0.7, tangentialKeep: 0.85 },
+  ground: { restitution: 0.8, tangentialKeep: 0.8 },
+  glass: { restitution: 0.78, tangentialKeep: 0.85 },
   // Grillage : rebond mou. En v1 il est déterministe (pas d'aléa).
   fence: { restitution: 0.25, tangentialKeep: 0.5 },
   net: { restitution: 0.1, tangentialKeep: 0.3 },
@@ -221,6 +221,8 @@ export interface PlayParams {
    * (monter au filet, reculer) reste toujours ta décision.
    */
   assist: number;
+  /** Mode Duo : vitesse de tes joueurs au stick (m/s, temps physique). */
+  duoMoveSpeed: number;
 }
 
 export const DEFAULT_PLAY: PlayParams = {
@@ -236,6 +238,7 @@ export const DEFAULT_PLAY: PlayParams = {
   overheadZ: 2.7,
   smashMinZ: 1.6,
   assist: 0.7,
+  duoMoveSpeed: 6.5,
 };
 
 export type AiLevel = 'facile' | 'moyen' | 'fort';
@@ -261,14 +264,22 @@ export interface AiParams {
   volleyPenalty: number;
   /** Écart type de l'erreur de service (m) : au-delà du carré, c'est la faute. */
   serveError: number;
-  /** Au filet : probabilité de jouer une volée amortie courte et croisée (le coup qui conclut). */
+  /** Au filet : probabilité de jouer une volée amortie ou un smash (les coups qui concluent). 0 = jamais. */
   attackChance: number;
+  /** Duo : probabilité de monter au filet quand l'occasion se présente. 0 = reste au fond. */
+  netChance: number;
+  /**
+   * Marge supplémentaire au-dessus du filet pour ses coups tendus (m). Plus elle est grande, plus
+   * la balle est bombée : elle rebondit plus haut et laisse plus de temps, y compris après la vitre.
+   */
+  loft: number;
 }
 
 export const AI_LEVELS: Record<AiLevel, AiParams> = {
-  facile: { reaction: 0.35, moveSpeed: 3.6, aimError: 1.4, lobChance: 0.1, minDepth: 4, maxDepth: 7.5, errorChance: 0.12, openCourtBias: 0.25, homeDepth: 3, volleyPenalty: 0.8, serveError: 0.9, attackChance: 0.15 },
-  moyen: { reaction: 0.25, moveSpeed: 4.2, aimError: 0.9, lobChance: 0.15, minDepth: 5, maxDepth: 8.5, errorChance: 0.08, openCourtBias: 0.5, homeDepth: 4, volleyPenalty: 0.5, serveError: 0.6, attackChance: 0.35 },
-  fort: { reaction: 0.15, moveSpeed: 4.8, aimError: 0.5, lobChance: 0.2, minDepth: 6, maxDepth: 9.3, errorChance: 0.05, openCourtBias: 0.75, homeDepth: 5.5, volleyPenalty: 0.2, serveError: 0.45, attackChance: 0.55 },
+  // Facile = pour apprendre : adversaires lents, qui jouent sur toi, ratent souvent, n'attaquent pas et restent au fond.
+  facile: { reaction: 0.45, moveSpeed: 3.0, aimError: 1.4, lobChance: 0.1, minDepth: 3.5, maxDepth: 6.5, errorChance: 0.2, openCourtBias: 0.1, homeDepth: 3, volleyPenalty: 0.8, serveError: 0.7, attackChance: 0, netChance: 0, loft: 1.1 },
+  moyen: { reaction: 0.25, moveSpeed: 4.2, aimError: 0.9, lobChance: 0.15, minDepth: 5, maxDepth: 8.5, errorChance: 0.08, openCourtBias: 0.5, homeDepth: 4, volleyPenalty: 0.5, serveError: 0.6, attackChance: 0.35, netChance: 0.65, loft: 0.4 },
+  fort: { reaction: 0.15, moveSpeed: 4.8, aimError: 0.5, lobChance: 0.2, minDepth: 6, maxDepth: 9.3, errorChance: 0.05, openCourtBias: 0.75, homeDepth: 5.5, volleyPenalty: 0.2, serveError: 0.45, attackChance: 0.55, netChance: 0.85, loft: 0 },
 };
 
 /** Barème du score de style (points gagnés par ton équipe uniquement). */
@@ -287,6 +298,27 @@ export const STYLE = {
   glassWinnerMaxCount: 3,
   /** À partir de ce nombre de vitres, le coup gagnant déclenche le ralenti « Rebote ». */
   slowMoGlassCount: 2,
+};
+
+/**
+ * Aides au joueur selon le niveau choisi : le niveau règle la force des adversaires ET le
+ * confort de jeu. Facile = toutes les aides, fort = aucune.
+ */
+export interface Aids {
+  /** Le service retombe toujours dans le carré : le point visé y est ramené. */
+  serveInBox: boolean;
+  /** Duo : sur une balle à jouer après ta vitre, le joueur concerné va se placer tout seul. */
+  glassAutoPlace: boolean;
+  /** Duo : sur une balle sortie de ta vitre, un geste vers le haut donne toujours un lob propre. */
+  glassSafeLob: boolean;
+  /** Duo : portée de frappe supplémentaire sur une balle sortie de ta vitre (m). */
+  glassReachBonus: number;
+}
+
+export const AIDS: Record<AiLevel, Aids> = {
+  facile: { serveInBox: true, glassAutoPlace: true, glassSafeLob: true, glassReachBonus: 0.4 },
+  moyen: { serveInBox: false, glassAutoPlace: true, glassSafeLob: false, glassReachBonus: 0.2 },
+  fort: { serveInBox: false, glassAutoPlace: false, glassSafeLob: false, glassReachBonus: 0 },
 };
 
 /** Niveau de l'IA partenaire (fixe : un partenaire correct, ni boulet ni sauveur). */

@@ -4,13 +4,13 @@ import { canVibrate, Sfx, vibrate } from './audio/sfx';
 import { COURT, FIXED_DT, STYLE, type AiLevel } from './core/constants';
 import { clamp, type Vec3 } from './core/math/vec3';
 import type { ContactEvent } from './core/physics/step';
-import { createMatch, HUMAN_ID, isHittable, tickMatch, type ControlMode, type Match, type MatchEvent, type MatchInput } from './core/play/match';
+import { createMatch, HUMAN_ID, humanServeShot, isHittable, tickMatch, type ControlMode, type Match, type MatchEvent, type MatchInput } from './core/play/match';
 import { predict } from './core/physics/predict';
 import type { Recording } from './core/play/replay';
 import { REASON_FR } from './core/rules/rally';
 import { pointsLabel } from './core/rules/score';
 import { createSandbox, launchBall, relaunch, tickSandbox } from './core/sandbox';
-import { analyzeSwipe, shotVelocity, type Swipe } from './core/shot/swipeToShot';
+import { analyzeSwipe, serveIntentFromDrag, shotVelocity, type ShotIntent, type Swipe } from './core/shot/swipeToShot';
 import { attachDuo } from './input/duoTouch';
 import { attachSwipe } from './input/touch';
 import { renderCourtLayer } from './render/courtLayer';
@@ -117,23 +117,42 @@ function pushInput(input: MatchInput): void {
   recording.inputs.push(input);
 }
 
+/** Est-ce à un joueur humain de servir, là, maintenant ? */
+function humanServing(): boolean {
+  return screen === 'match' && game.phase === 'serve' && game.players[game.serverId].isHuman;
+}
+
+/** Geste de service en cours (doigt posé) : le trait pointillé le suit en direct. */
+let serveDrag: ShotIntent | null = null;
+/** Sans doigt posé, on montre le service « tout droit », en plus discret. */
+const DEFAULT_SERVE: ShotIntent = { kind: 'drive', power: 0.5, aim: 0, swipeSpeed: 0, curvature: 0 };
+
+function releaseServe(swipe: Swipe): void {
+  serveDrag = null;
+  const intent = serveIntentFromDrag(swipe, tuning.shot);
+  if (intent) pushInput({ tick: game.tick, playerId: game.serverId, intent });
+  else showFeedback('Tire un trait vers le haut pour servir', 'info', 900);
+}
+
+const STICK_RADIUS = 36;
+
 // Mode Duo : un pouce par joueur, sur tout l'écran.
 const duo = attachDuo(canvas, {
   enabled: isDuoPlaying,
   flickMaxMs: 400,
-  stickDelayMs: 90,
-  radiusPx: 56,
+  stickDelayMs: 50,
+  radiusPx: STICK_RADIUS,
+  onMove: (_playerId, swipe) => {
+    if (isDuoPlaying() && humanServing()) serveDrag = serveIntentFromDrag(swipe, tuning.shot);
+  },
   onStick: (playerId, stick) => {
     if (isDuoPlaying()) pushInput({ tick: game.tick, playerId, stick });
   },
   onRelease: (playerId, swipe, quick) => {
     if (!isDuoPlaying()) return;
-    // Au service, on est indulgent : n'importe quel geste vers le haut sert, quelle que soit
-    // sa durée et quel que soit le côté de l'écran. Rien d'autre ne peut se passer à ce moment-là.
-    if (game.phase === 'serve' && game.servingTeam === 0) {
-      const serveIntent = analyzeSwipe(swipe, { ...tuning.shot, lobMode: 'speed' });
-      if (serveIntent) pushInput({ tick: game.tick, playerId: game.serverId, intent: serveIntent });
-      else showFeedback('Swipe vers le haut pour servir', 'info', 900);
+    // Au service : un trait vers le haut, n'importe où sur l'écran, sans limite de durée.
+    if (humanServing()) {
+      releaseServe(swipe);
       return;
     }
     if (!quick) return;
@@ -145,11 +164,17 @@ const duo = attachDuo(canvas, {
 // Mode classique et bac à sable : un seul swipe, depuis la moitié basse de l'écran.
 attachSwipe(canvas, {
   onMove: (swipe) => {
-    if (debug && !isDuoPlaying()) preview = previewFromSwipe(swipe);
+    if (isDuoPlaying()) return;
+    if (humanServing()) serveDrag = serveIntentFromDrag(swipe, tuning.shot);
+    else if (debug) preview = previewFromSwipe(swipe);
   },
   onEnd: (swipe) => {
     preview = null;
     if (isDuoPlaying()) return;
+    if (humanServing()) {
+      releaseServe(swipe);
+      return;
+    }
     const intent = analyzeSwipe(swipe, tuning.shot);
     if (!intent) return;
     if (screen === 'sandbox') {
@@ -164,6 +189,7 @@ attachSwipe(canvas, {
   },
   onCancel: () => {
     preview = null;
+    serveDrag = null;
   },
 });
 
@@ -235,9 +261,9 @@ function refreshHint(): void {
     const second = game.serveNumber === 2 ? ' (2e balle)' : '';
     if (game.mode === 'duo') {
       if (game.phase === 'serve' && game.servingTeam === 0)
-        text = `À toi de servir${second} : swipe vers le haut, n’importe où`;
+        text = `À toi de servir${second} : tire un trait vers le haut, ajuste, relâche`;
       else if (firstPoint) text = 'Glisse = déplacer · coup sec ↑ = tendu · ↑ doux = lob · ↓ = smash';
-    } else if (game.phase === 'serve' && game.serverId === HUMAN_ID) text = `À toi de servir${second} : swipe vers le haut`;
+    } else if (game.phase === 'serve' && game.serverId === HUMAN_ID) text = `À toi de servir${second} : tire un trait vers le haut, ajuste, relâche`;
     else if (firstPoint) text = 'Quand l’anneau vert s’allume sous toi, swipe vers le haut';
   }
   if (text === lastHint) return;
@@ -559,7 +585,7 @@ function swingProgress(startTick: number, tick: number, alpha: number): number |
 function drawSticks(): void {
   for (const t of duo.touches()) {
     if (!t.stickActive) continue;
-    const r = 56;
+    const r = STICK_RADIUS;
     let dx = t.x - t.x0;
     let dy = t.y - t.y0;
     const n = Math.hypot(dx, dy);
@@ -574,7 +600,7 @@ function drawSticks(): void {
     ctx.stroke();
     ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
     ctx.beginPath();
-    ctx.arc(t.x0 + dx, t.y0 + dy, 20, 0, Math.PI * 2);
+    ctx.arc(t.x0 + dx, t.y0 + dy, 16, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -594,7 +620,8 @@ function updateLanding(): void {
 
 function sceneInput(alpha: number, slow: boolean): SceneInput {
   if (landingDirty && screen === 'match') updateLanding();
-  const common = { alpha, tuning, court, debug, preview, fps, trail, landing: screen === 'match' ? landing : null };
+  const serveAim = humanServing() ? { ...humanServeShot(game, serveDrag ?? DEFAULT_SERVE, tuning, court), active: serveDrag !== null } : null;
+  const common = { alpha, tuning, court, debug, preview, fps, trail, landing: screen === 'match' ? landing : null, serveAim };
   if (screen === 'sandbox') {
     return {
       ...common,

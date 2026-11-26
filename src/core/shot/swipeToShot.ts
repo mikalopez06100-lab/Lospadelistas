@@ -81,6 +81,29 @@ export function analyzeSwipe(swipe: Swipe, s: ShotParams, allowDown = false): Sh
   return { kind, power, aim, swipeSpeed, curvature };
 }
 
+/**
+ * Geste de service : on tire un trait vers le haut, on ajuste, on relâche. La direction du trait
+ * décale le point visé et sa LONGUEUR (pas sa vitesse) règle la profondeur : on peut donc prendre
+ * son temps pour viser, le trait pointillé montre le résultat en direct.
+ */
+export function serveIntentFromDrag(swipe: Swipe, s: ShotParams): ShotIntent | null {
+  const pts = swipe.points;
+  if (pts.length < 2) return null;
+  const h = swipe.viewportHeight;
+  const dx = pts[pts.length - 1].x - pts[0].x;
+  const dy = pts[pts.length - 1].y - pts[0].y;
+  const len = Math.hypot(dx, dy) / h;
+  if (dy >= 0 || len < s.minSwipeLength) return null;
+  const maxAim = s.maxAimDeg * DEG;
+  return {
+    kind: 'drive',
+    power: clamp((len - 0.06) / 0.22, 0, 1),
+    aim: clamp(Math.atan2(dx, -dy) * s.aimGain, -maxAim, maxAim),
+    swipeSpeed: 0,
+    curvature: 0,
+  };
+}
+
 /** Écart maximal du tracé à sa corde, rapporté à la longueur de la corde. */
 function pathCurvature(pts: SwipeSample[], dx: number, dy: number, len: number): number {
   const a = pts[0];

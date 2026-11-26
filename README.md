@@ -65,7 +65,24 @@ pas pour tester l'installation : pour ça, utilise l'adresse Vercel.
 - **Les adversaires jouent la même logique** : ils montent au filet après un lob ou quand tu
   restes au fond, reculent quand tu les lobes, et smashent les balles hautes près du filet. Un
   smash qui rebondit et sort par-dessus la vitre de fond donne le point (« sortie après rebond »).
-- Service : un swipe vers le haut, n'importe où sur l'écran et sans contrainte de vitesse.
+- **Service** : le carré visé est surligné. Pose le doigt n'importe où et tire un trait vers le
+  haut : un trait pointillé montre la trajectoire et le point de chute en direct (blanc = dans le
+  carré, rouge = faute). La direction du trait décale le point visé, sa longueur règle la
+  profondeur. Tu ajustes sans te presser, tu relâches, ça part. Pareil en mode Classique.
+
+### Les aides dépendent du niveau
+
+Le niveau règle la force des adversaires **et** le confort de jeu (`AIDS` et `AI_LEVELS` dans
+`src/core/constants.ts`) :
+
+| | Facile | Moyen | Fort |
+|---|---|---|---|
+| Service ramené dans le carré | oui | non | non |
+| Placement automatique sur une balle à jouer après ta vitre | oui | oui | non |
+| En sortie de vitre, un geste vers le haut donne un lob propre | oui | non | non |
+| Portée de frappe en plus en sortie de vitre | +0,4 m | +0,2 m | aucune |
+| Adversaires : balles bombées (plus de temps pour toi) | très | un peu | non |
+| Adversaires : smash, amortie, montée au filet | jamais | parfois | souvent |
 
 ### Mode Classique : match en double à un pouce
 
@@ -156,6 +173,7 @@ Deux façons de faire :
 | `play.maxTimingAimErrorDeg` / `maxTimingPowerError` | Pénalité d'un mauvais timing. |
 | `AI_LEVELS` | Les trois niveaux d'IA (non réglables dans le panneau ⚙). |
 | `match.gamesToWin` | Nombre de jeux gagnants pour le match (1 par défaut). |
+| `play.duoMoveSpeed` | Mode Duo : vitesse de tes joueurs au stick. |
 | `play.assist`, `play.overheadZ`, `play.smashMinZ` | Mode Duo : aide latérale, hauteur max jouable au-dessus de la tête, hauteur min pour smasher. |
 | `shot.smash*` | Vitesses du smash, angle plongeant maximum, marge au-dessus du filet. |
 
@@ -218,20 +236,17 @@ Matchs en 3 jeux gagnés par le robot, sur 6 :
 | Mode | Robot | IA facile | IA moyen | IA fort |
 |---|---|---|---|---|
 | Classique | bon (60 ms) | 6 | 5 | 2 |
-| Classique | moyen (120 ms) | 5 | 3 | 0 |
-| Duo, reste au fond | bon | 6 | 6 | 2 |
-| Duo, reste au fond | moyen | 2 | 0 | 0 |
-| Duo, monte au filet | bon | 6 | 6 | 1 |
-| Duo, monte au filet | moyen | 3 | 0 | 0 |
+| Classique | moyen (120 ms) | 6 | 4 | 0 |
+| Duo | bon | 6 | 6 | 5 |
+| Duo | moyen | 6 | 4 | 0 |
 
 À lire avec prudence :
 
-- **Le Duo est plus dur que le Classique** pour un joueur moyen, parce qu'il faut se placer.
-- **Monter au filet ne rapporte pas encore nettement plus que rester au fond**, alors que c'est
-  le cœur du padel. Soit le robot monte mal, soit le jeu ne récompense pas assez le filet. C'est
-  le premier point à vérifier en jouant.
-- **Un match en 3 jeux dure 8 à 12 minutes** (échange médian de 8 à 28 coups), d'où le format
-  en 1 jeu par défaut.
+- **Facile est maintenant un vrai niveau d'apprentissage** dans les deux modes.
+- **En Duo, « fort » est trop facile pour un joueur précis** (5 sur 6) depuis que tes joueurs
+  courent plus vite. À durcir quand le niveau facile sera validé en vrai.
+- **Un match en 3 jeux dure 6 à 20 minutes** selon le niveau, d'où le format en 1 jeu par défaut.
+- `npm run sim` affiche aussi la jouabilité après la vitre par niveau (temps disponible, hauteur).
 
 Ce robot n'est qu'une approximation : seul un test sur téléphone dira si le jeu est trop facile,
 trop dur ou trop passif.
