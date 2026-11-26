@@ -119,7 +119,7 @@ Le niveau règle la force des adversaires **et** le confort de jeu (`AIDS` et `A
   rapide des deux. Avec le bouton Dbg, tu vois qui doit prendre la balle.
 - **Service** : quand c'est à toi, « À toi de servir » s'affiche. Swipe vers le haut : un geste
   droit vise le centre du carré, la direction décale le point visé, la puissance règle la
-  profondeur. Le service part en diagonale depuis le couloir du serveur. Faute → 2e balle, filet puis carré → let, deux fautes → point perdu. Après le
+  profondeur. Le service part en diagonale, à droite puis à gauche. Faute → 2e balle, filet puis carré → let, deux fautes → point perdu. Après le
   rebond, la balle peut toucher la vitre mais pas le grillage.
 - **Retour de service** : seul le receveur désigné peut jouer, et seulement après le rebond.
 - **Pendant l'échange** : quand l'anneau vert s'allume sous ton joueur, swipe vers le haut. Le
@@ -127,9 +127,10 @@ Le niveau règle la force des adversaires **et** le confort de jeu (`AIDS` et `A
   mais la balle part quand même. Un swipe fait jusqu'à 220 ms avant que la balle soit à portée
   est gardé en mémoire. Les balles de la moitié de ton partenaire, c'est lui qui les joue.
 - **Score** : 15, 30, 40, puis égalité et avantage. Le match se joue en un seul jeu, et tu sers.
-- **Chacun son côté, tout le match** : Lola à gauche, Nico à droite, adversaires pareil. Il n'y
-  a pas de changement de côté au service : le serveur sert depuis son couloir, en diagonale.
-  En Duo, un joueur que tu ne touches pas ne traverse jamais vers le couloir de son partenaire.
+- **Chacun son côté** : Lola à gauche, Nico à droite, adversaires pareil. Au service, le serveur
+  sert une fois à droite, une fois à gauche, comme au padel, mais son partenaire ne change pas de
+  côté et le serveur regagne le sien juste après. En Duo, un joueur que tu ne touches pas ne va
+  jamais s'installer dans le couloir de son partenaire.
 - **IA : facile / moyen / fort** (adversaires seulement, ton partenaire est toujours « moyen ») :
   réaction, vitesse, précision, jeu vers le côté libre, position plus ou moins près du filet,
   volées amorties pour conclure, fautes directes. Les paramètres sont dans `AI_LEVELS`

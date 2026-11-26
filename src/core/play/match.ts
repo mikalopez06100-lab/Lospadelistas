@@ -14,7 +14,7 @@ import {
   type RallyState,
 } from '../rules/rally';
 import { styleForPoint, type StyleGain } from '../rules/style';
-import { awardPoint, createScore, type MatchScore, type Team } from '../rules/score';
+import { awardPoint, createScore, pointsPlayedInGame, type MatchScore, type Team } from '../rules/score';
 import { createRng, gaussian, nextFloat, range, type Rng } from '../rng';
 import { aimAt } from '../shot/aim';
 import { shotVelocity, type ShotIntent, type ShotKind } from '../shot/swipeToShot';
@@ -226,12 +226,9 @@ function setupServe(m: Match, court: CourtGeometry): void {
   m.ball = null;
   m.phase = 'serve';
   m.phaseTicks = 0;
-  // Chacun reste de son côté pendant tout le match : le serveur sert depuis son propre couloir,
-  // en diagonale. Il n'y a pas d'alternance droite / gauche d'un point à l'autre.
-  const server = m.players[m.serverId];
-  const laneX = (server.zone.xMin + server.zone.xMax) / 2;
-  const rightBox = serviceBox(m.servingTeam, 'right', court);
-  m.serveSide = laneX >= rightBox.xMin && laneX <= rightBox.xMax ? 'right' : 'left';
+  // Comme au padel, le serveur sert une fois à droite, une fois à gauche. Lui seul se déplace
+  // pour servir : son partenaire reste de son côté, et le serveur regagne le sien ensuite.
+  m.serveSide = pointsPlayedInGame(m.score) % 2 === 0 ? 'right' : 'left';
   m.assigned = [null, null];
   const receiving = other(m.servingTeam);
   const serverBoxSide = serviceBox(m.servingTeam, m.serveSide, court);
@@ -248,8 +245,8 @@ function setupServe(m: Match, court: CourtGeometry): void {
       const sx = (serverBoxSide.xMin + serverBoxSide.xMax) / 2;
       p.pos = { x: lerp(court.width / 2, sx, 0.6), y: p.team === 0 ? 1.8 : court.length - 1.8 };
     } else if (p.team === m.servingTeam) {
-      const sx = (serverBoxSide.xMin + serverBoxSide.xMax) / 2;
-      p.pos = { x: court.width - sx, y: p.team === 0 ? court.netY - 3 : court.netY + 3 };
+      // Le partenaire du serveur monte au filet, dans SON couloir, quel que soit le côté du service.
+      p.pos = { x: p.home.x, y: p.team === 0 ? court.netY - 3 : court.netY + 3 };
     } else if (p.id === receiverId) {
       p.pos = { x: (receiverBox.xMin + receiverBox.xMax) / 2, y: p.team === 0 ? back + 1 : back - 1 };
     } else {
@@ -542,8 +539,11 @@ function moveManual(m: Match, p: MatchPlayer, t: Tuning, dt: number, court: Cour
     // Chacun son couloir : un joueur laissé trop près du centre s'en écarte tout seul, pour que
     // la paire ne finisse pas collée au milieu. Sa profondeur ne bouge pas.
     const mid = court.width / 2;
-    const goal = p.zone.xMin < mid ? Math.min(p.pos.x, mid - LANE_MARGIN) : Math.max(p.pos.x, mid + LANE_MARGIN);
-    const max = speed * t.play.assist * 0.6;
+    const leftLane = p.zone.xMin < mid;
+    const goal = leftLane ? Math.min(p.pos.x, mid - LANE_MARGIN) : Math.max(p.pos.x, mid + LANE_MARGIN);
+    // Du mauvais côté (il vient de servir en face de son couloir) : il rentre chez lui sans traîner.
+    const wrongSide = leftLane ? p.pos.x > mid : p.pos.x < mid;
+    const max = speed * (wrongSide ? 1 : t.play.assist * 0.6);
     vx = clamp((goal - p.pos.x) / dt, -max, max);
   }
   p.pos.x = clamp(p.pos.x + vx * dt, 0.4, court.width - 0.4);
